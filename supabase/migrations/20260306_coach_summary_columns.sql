@@ -1,0 +1,3 @@
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS coach_summary TEXT,
+ADD COLUMN IF NOT EXISTS coach_summary_date TIMESTAMPTZ;
