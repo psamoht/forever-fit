@@ -15,6 +15,7 @@ import confetti from "canvas-confetti";
 import { useProfile } from "@/components/profile-provider";
 import { calculateExerciseScore, EXERCISE_SCORING_DICTIONARY, DEFAULT_SCORING, MuscleGroup } from "@/lib/scoring-system";
 import { computeUpdatedTrainingState, TrainingState } from "@/lib/training-state";
+import { checkLevelUp, getLevelFromPoints, getStreakMilestone, LevelInfo } from "@/lib/level-system";
 
 export default function WorkoutPlayerPage() {
     const router = useRouter();
@@ -34,6 +35,7 @@ export default function WorkoutPlayerPage() {
     const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
     const [isAudioEnabled, setIsAudioEnabled] = useState(true);
     const [earnedPoints, setEarnedPoints] = useState<number | null>(null);
+    const [levelUpInfo, setLevelUpInfo] = useState<LevelInfo | null>(null);
 
     // --- Audio Pre-buffering States ---
     const [prefetchedAudio, setPrefetchedAudio] = useState<Record<number, string>>({});
@@ -594,7 +596,12 @@ export default function WorkoutPlayerPage() {
                     if (diffDays === 1) {
                         // Consecutive day
                         newStreak += 1;
-                        toast.success("Streak erhöht! 🔥");
+                        const milestone = getStreakMilestone(newStreak);
+                        if (milestone) {
+                            toast.success(`${milestone.emoji} ${milestone.message}`);
+                        } else {
+                            toast.success("Streak erhöht! 🔥");
+                        }
                     } else if (diffDays > 1) {
                         // Broken streak
                         newStreak = 1;
@@ -686,11 +693,31 @@ export default function WorkoutPlayerPage() {
 
                 setEarnedPoints(totalPoints);
 
+                // Check for Level-Up
+                const oldPoints = (profile.points || 0);
+                const newPointsTotal = oldPoints + totalPoints;
+                const levelUp = checkLevelUp(oldPoints, newPointsTotal);
+                if (levelUp) {
+                    setLevelUpInfo(levelUp);
+                    // Extra confetti burst for level-up
+                    setTimeout(() => {
+                        confetti({ particleCount: 100, spread: 100, origin: { y: 0.6 }, colors: ['#fbbf24', '#f59e0b', '#d97706'] });
+                    }, 500);
+                }
+
                 // 5. Fire Confetti
                 fireConfetti();
 
-                // 6. Generate Summary
-                await generateAndPlaySummary(userName, workoutQueue, totalPoints, rpeScore);
+                // 6. Generate Summary with gamification context
+                const currentLevel = getLevelFromPoints(newPointsTotal);
+                const streakMilestone = getStreakMilestone(newStreak);
+                await generateAndPlaySummary(userName, workoutQueue, totalPoints, rpeScore, {
+                    level: currentLevel,
+                    levelUp: levelUp,
+                    streakDays: newStreak,
+                    streakMilestone: streakMilestone,
+                    totalPoints: newPointsTotal
+                });
             }
         } catch (error) {
             console.error("Error saving workout:", error);
@@ -725,7 +752,19 @@ export default function WorkoutPlayerPage() {
         frame();
     };
 
-    const generateAndPlaySummary = async (userName: string, completedExercises: Exercise[], points: number, rpe: number) => {
+    const generateAndPlaySummary = async (
+        userName: string,
+        completedExercises: Exercise[],
+        points: number,
+        rpe: number,
+        gamification?: {
+            level: LevelInfo;
+            levelUp: LevelInfo | null;
+            streakDays: number;
+            streakMilestone: { message: string; emoji: string } | null;
+            totalPoints: number;
+        }
+    ) => {
         setSummaryLoading(true);
         try {
             // 1. Play Pre-fetched Summary if available
@@ -749,9 +788,17 @@ export default function WorkoutPlayerPage() {
                 body: JSON.stringify({
                     userName,
                     currentWorkoutStats: stats,
-                    previousWorkoutStats: null, // For MVP, we skip fetching historical data to keep it fast
+                    previousWorkoutStats: null,
                     rpeScore: rpe,
-                    totalPoints: points
+                    totalPoints: points,
+                    gamification: gamification ? {
+                        levelTitle: gamification.level.title,
+                        levelNumber: gamification.level.level,
+                        levelUp: gamification.levelUp ? gamification.levelUp.title : null,
+                        streakDays: gamification.streakDays,
+                        streakMilestone: gamification.streakMilestone?.message || null,
+                        totalPoints: gamification.totalPoints
+                    } : null
                 })
             });
 
@@ -791,6 +838,21 @@ export default function WorkoutPlayerPage() {
                         <div className="bg-emerald-900/50 border border-emerald-500/30 text-emerald-400 p-4 rounded-2xl max-w-sm mx-auto shadow-inner flex flex-col items-center justify-center gap-1">
                             <span className="text-sm uppercase tracking-wider font-semibold opacity-80">Du hast gesammelt</span>
                             <span className="text-5xl font-black">{earnedPoints} Punkte</span>
+                        </div>
+                    )}
+
+                    {/* Level-Up Celebration */}
+                    {levelUpInfo && (
+                        <div className="bg-gradient-to-r from-yellow-900/60 to-amber-900/60 border border-yellow-500/40 p-5 rounded-2xl max-w-sm mx-auto shadow-xl animate-in zoom-in-95 duration-500">
+                            <div className="flex items-center justify-center gap-3">
+                                <span className="text-4xl">{levelUpInfo.emoji}</span>
+                                <div className="text-center">
+                                    <p className="text-yellow-400 text-xs font-bold uppercase tracking-wider">Level Up!</p>
+                                    <p className="text-2xl font-extrabold text-yellow-300">Level {levelUpInfo.level}</p>
+                                    <p className="text-yellow-400/80 font-semibold">{levelUpInfo.title}</p>
+                                </div>
+                                <span className="text-4xl">{levelUpInfo.emoji}</span>
+                            </div>
                         </div>
                     )}
 

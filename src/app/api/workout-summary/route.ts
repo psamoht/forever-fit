@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { userName, currentWorkoutStats, previousWorkoutStats, rpeScore, totalPoints } = body;
+        const { userName, currentWorkoutStats, previousWorkoutStats, rpeScore, totalPoints, gamification } = body;
 
         // 1. Generate the text summary
         const textModel = genAI.getGenerativeModel({
@@ -24,13 +24,14 @@ export async function POST(req: NextRequest) {
 Dein Ziel ist es, dem Nutzer nach einem erfolgreich abgeschlossenen Workout zu gratulieren.
 Spreche den Nutzer immer per "Du" an. Formuliere sehr natürlich und spürbar freudig.
 WICHTIG (Workout-Analyse): Du erhältst gleich die "Aktuellen Trainingsdaten", welche die absolvierten Übungen auflisten. 
-Greife 1-2 dieser Übungen namentlich heraus und lobe den Nutzer spezifisch dafür (z.B. "Besonders stark, wie du die Kniebeugen durchgezogen hast!"). 
-Zeige, dass du das Workout wirklich analysiert hast und den Fokus der Übungen verstanden hast.
+Greife 1-2 dieser Übungen namentlich heraus und lobe den Nutzer spezifisch dafür.
 ZUSÄTZLICH (Atomic Habits & Progressive Overload): Beziehe das subjektive Anstrengungsempfinden ("rpeScore" 1-10) ein, FALLS es mitgegeben wurde.
-- Wenn RPE <= 4 (sehr leicht): Lobe die Beständigkeit und erwähne beiläufig, dass wir beim nächsten Mal vielleicht eine Schippe drauflegen können.
-- Wenn RPE 5-7 (moderat/optimal): Perfekt! Bestätige, dass das genau der "Sweet Spot" für gesundes Wachstum ist.
-- Wenn RPE >= 8 (sehr hart): Lobe den extremen Kampfgeist, mahne aber liebevoll zur Erholung ("Ruh dich gut aus, wir wollen uns nicht überlasten!").
-- Wenn KEIN RPE vorhanden ist (z.B. "pending"): Lobe einfach allgemein die großartige Arbeit und den Abschluss des Trainings, ohne auf Intensität einzugehen.
+- Wenn RPE <= 4 (sehr leicht): Lobe die Beständigkeit und erwähne, dass wir beim nächsten Mal vielleicht eine Schippe drauflegen können.
+- Wenn RPE 5-7 (moderat/optimal): Perfekt! Bestätige, dass das genau der "Sweet Spot" ist.
+- Wenn RPE >= 8 (sehr hart): Lobe den extremen Kampfgeist, mahne aber liebevoll zur Erholung.
+- Wenn KEIN RPE vorhanden ist: Lobe einfach allgemein.
+LEVEL-SYSTEM: Falls der Nutzer ein Level aufgestiegen ist, GRATULIERE begeistert und nenne den neuen Level-Titel! Das ist ein besonderer Moment.
+Falls Streak-Meilenstein erreicht wurde (z.B. 7 Tage, 30 Tage), erwähne das kurz und feiere es.
 Halte dich sehr kurz (max. 4-5 Sätze).
 Verwende keine Emojis, Sterne (*) oder Markdown in deiner Antwort.`,
         });
@@ -50,7 +51,20 @@ Verwende keine Emojis, Sterne (*) oder Markdown in deiner Antwort.`,
             prompt += `Empfundene Anstrengung: pending (Nutzer hat noch nicht bewertet)\n`;
         }
 
-        prompt += `Vorherige Trainingsdaten (zum Vergleich): ${previousWorkoutStats ? JSON.stringify(previousWorkoutStats) : 'Keine alten Daten verfügbar.'}`;
+        prompt += `Vorherige Trainingsdaten (zum Vergleich): ${previousWorkoutStats ? JSON.stringify(previousWorkoutStats) : 'Keine alten Daten verfügbar.'}\n`;
+
+        if (gamification) {
+            prompt += `\nGamification-Kontext:\n`;
+            prompt += `- Aktuelles Level: ${gamification.levelNumber} ("${gamification.levelTitle}")\n`;
+            prompt += `- Gesamtpunkte: ${gamification.totalPoints}\n`;
+            prompt += `- Aktuelle Streak: ${gamification.streakDays} Tage\n`;
+            if (gamification.levelUp) {
+                prompt += `- LEVEL UP! Der Nutzer ist gerade auf Level "${gamification.levelUp}" aufgestiegen! Gratuliere begeistert!\n`;
+            }
+            if (gamification.streakMilestone) {
+                prompt += `- STREAK-MEILENSTEIN: ${gamification.streakMilestone}\n`;
+            }
+        }
 
         const textResponse = await textModel.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }]

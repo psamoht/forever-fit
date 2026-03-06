@@ -6,12 +6,15 @@ import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Navbar } from "@/components/navbar";
-import { Play, TrendingUp, Clock, Flame, Star, Calendar, MessageCircle, LogOut } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Play, TrendingUp, Clock, Flame, Star, Calendar, MessageCircle, LogOut, Trophy, Target } from "lucide-react";
 import Link from "next/link";
 import { WorkoutCard } from "@/components/workout-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ChatInterface } from "@/components/chat-interface";
 import { useProfile } from "@/components/profile-provider";
+import { getLevelFromPoints, getLevelProgress, LevelInfo } from "@/lib/level-system";
+import { getWeeklyChallenge, getChallengeProgress, Challenge } from "@/lib/challenge-system";
 
 const themeTranslations: Record<string, string> = {
     strength: "Kraft",
@@ -35,6 +38,10 @@ export default function DashboardPage() {
         isTodayDone: false,
         todaysWorkout: { title: "Lade...", theme: "mobility", isRest: false }
     });
+    const [levelInfo, setLevelInfo] = useState<LevelInfo | null>(null);
+    const [levelProgress, setLevelProgress] = useState(0);
+    const [challenge, setChallenge] = useState<Challenge | null>(null);
+    const [challengeProgress, setChallengeProgress] = useState({ current: 0, target: 1, isComplete: false, percentage: 0 });
 
     useEffect(() => {
         const hour = new Date().getHours();
@@ -63,7 +70,7 @@ export default function DashboardPage() {
                         .eq("day_of_week", todayName)
                         .single();
 
-                    let workoutTitle = "Morgen-Mobilisierung"; // Fallback
+                    let workoutTitle = "Morgen-Mobilisierung";
                     let workoutTheme = "mobility";
                     let isRestDay = false;
 
@@ -73,13 +80,10 @@ export default function DashboardPage() {
                         if (schedule.activity_type === 'rest') isRestDay = true;
                     }
 
-                    // Check completion (still using last_workout_date logic for now)
                     let isTodayDone = false;
-                    // Check if last_workout_date exists and compare
                     if (globalProfile.last_workout_date) {
                         const lastDate = new Date(globalProfile.last_workout_date);
                         const today = new Date();
-                        // Check if same day, month, and year explicitly to avoid timezone edge cases with toDateString
                         if (
                             lastDate.getDate() === today.getDate() &&
                             lastDate.getMonth() === today.getMonth() &&
@@ -89,13 +93,60 @@ export default function DashboardPage() {
                         }
                     }
 
+                    const currentPoints = globalProfile.points || 0;
+                    const currentStreak = globalProfile.streak_current || 0;
+
                     setStats(prev => ({
                         ...prev,
-                        streak: globalProfile.streak_current || 0,
-                        points: globalProfile.points || 0,
+                        streak: currentStreak,
+                        points: currentPoints,
                         isTodayDone,
                         todaysWorkout: { title: workoutTitle, theme: workoutTheme, isRest: isRestDay }
                     }));
+
+                    // Calculate level
+                    const level = getLevelFromPoints(currentPoints);
+                    setLevelInfo(level);
+                    setLevelProgress(getLevelProgress(currentPoints));
+
+                    // Fetch weekly stats for challenge progress
+                    const now = new Date();
+                    const mondayOffset = (now.getDay() === 0 ? -6 : 1) - now.getDay();
+                    const monday = new Date(now);
+                    monday.setDate(now.getDate() + mondayOffset);
+                    monday.setHours(0, 0, 0, 0);
+
+                    const { data: weeklyWorkouts } = await supabase
+                        .from('workouts')
+                        .select('points_earned')
+                        .eq('user_id', user.id)
+                        .gte('end_time', monday.toISOString())
+                        .eq('status', 'completed');
+
+                    const weeklyWorkoutsCount = weeklyWorkouts?.length || 0;
+                    const weeklyPointsTotal = weeklyWorkouts?.reduce((sum, w) => sum + (w.points_earned || 0), 0) || 0;
+
+                    // Count harder variants used this week
+                    let harderVariantsCount = 0;
+                    if (globalProfile.training_state?.recent_workouts) {
+                        const recentWorkouts = globalProfile.training_state.recent_workouts;
+                        const mondayStr = monday.toISOString().split('T')[0];
+                        harderVariantsCount = recentWorkouts
+                            .filter((w: any) => w.date >= mondayStr)
+                            .reduce((sum: number, w: any) => sum + (w.variants_used?.filter((v: string) => v === 'harder').length || 0), 0);
+                    }
+
+                    // Set challenge
+                    const weeklyChallenge = getWeeklyChallenge(level.level);
+                    setChallenge(weeklyChallenge);
+
+                    const progress = getChallengeProgress(weeklyChallenge, {
+                        workoutsCompleted: weeklyWorkoutsCount,
+                        pointsEarned: weeklyPointsTotal,
+                        currentStreak: currentStreak,
+                        harderVariantsUsed: harderVariantsCount,
+                    });
+                    setChallengeProgress(progress);
                 }
             } catch (error) {
                 console.error("Error fetching user data:", error);
@@ -114,18 +165,13 @@ export default function DashboardPage() {
         router.push("/");
     };
 
-
-
-    if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
-                <div className="animate-pulse flex flex-col items-center gap-4">
-                    <div className="h-12 w-12 bg-emerald-100 rounded-full"></div>
-                    <div className="h-4 w-32 bg-slate-200 rounded"></div>
-                </div>
-            </div>
-        )
-    }
+    // Dynamic flame size based on streak
+    const getFlameSize = (streak: number) => {
+        if (streak >= 30) return 28;
+        if (streak >= 14) return 24;
+        if (streak >= 7) return 22;
+        return 20;
+    };
 
     if (loading) {
         return (
@@ -163,11 +209,47 @@ export default function DashboardPage() {
                     </Link>
                 </div>
 
+                {/* Level Card */}
+                {levelInfo && (
+                    <div className="animate-in slide-in-from-bottom-5 duration-700 delay-50">
+                        <Card className="p-5 border-none bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-700 dark:to-teal-700 shadow-lg shadow-emerald-500/20 rounded-2xl text-white">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-3xl">{levelInfo.emoji}</span>
+                                    <div>
+                                        <p className="text-emerald-100 text-xs font-bold uppercase tracking-wider">Level {levelInfo.level}</p>
+                                        <h3 className="text-xl font-extrabold">{levelInfo.title}</h3>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-2xl font-bold">{stats.points}</p>
+                                    <p className="text-emerald-200 text-xs">Punkte</p>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-xs text-emerald-200">
+                                    <span>{stats.points} / {levelInfo.pointsForNext}</span>
+                                    <span>Nächstes Level</span>
+                                </div>
+                                <div className="w-full bg-white/20 rounded-full h-2">
+                                    <div
+                                        className="bg-white rounded-full h-2 transition-all duration-700"
+                                        style={{ width: `${levelProgress}%` }}
+                                    />
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+                )}
+
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-bottom-5 duration-700 delay-100">
                     <div className="bg-card p-4 rounded-2xl shadow-sm border border-border flex flex-col items-center justify-center space-y-2">
-                        <div className="h-10 w-10 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center text-orange-600 dark:text-orange-400">
-                            <Flame size={20} fill="currentColor" />
+                        <div className={`h-10 w-10 rounded-full flex items-center justify-center ${stats.streak >= 7
+                                ? 'bg-orange-200 dark:bg-orange-800/40'
+                                : 'bg-orange-100 dark:bg-orange-900/30'
+                            } text-orange-600 dark:text-orange-400`}>
+                            <Flame size={getFlameSize(stats.streak)} fill="currentColor" className={stats.streak >= 7 ? 'animate-pulse' : ''} />
                         </div>
                         <div className="text-center">
                             <span className="block text-2xl font-bold text-foreground">{stats.streak}</span>
@@ -184,6 +266,40 @@ export default function DashboardPage() {
                         </div>
                     </div>
                 </div>
+
+                {/* Weekly Challenge */}
+                {challenge && (
+                    <div className="animate-in slide-in-from-bottom-5 duration-700 delay-150">
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                            <Target size={16} className="text-emerald-600 dark:text-emerald-400" />
+                            <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Wochenaufgabe</h2>
+                        </div>
+                        <Card className={`p-5 border-none shadow-sm rounded-2xl ${challengeProgress.isComplete
+                                ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                                : 'bg-card'
+                            }`}>
+                            <div className="flex items-start gap-4">
+                                <span className="text-3xl">{challengeProgress.isComplete ? '✅' : challenge.emoji}</span>
+                                <div className="flex-1">
+                                    <h3 className="font-bold text-foreground">{challenge.title}</h3>
+                                    <p className="text-sm text-muted-foreground mt-0.5">{challenge.description}</p>
+                                    <div className="mt-3 space-y-1">
+                                        <div className="flex justify-between text-xs font-medium">
+                                            <span className={challengeProgress.isComplete ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-muted-foreground'}>
+                                                {challengeProgress.isComplete ? 'Geschafft! 🎉' : `${challengeProgress.current} / ${challengeProgress.target}`}
+                                            </span>
+                                            <span className="text-muted-foreground">{challengeProgress.percentage}%</span>
+                                        </div>
+                                        <Progress
+                                            value={challengeProgress.percentage}
+                                            className="h-2"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+                )}
 
                 {/* Workout Card */}
                 <section className="space-y-6 animate-in slide-in-from-bottom-5 duration-700 delay-200">
@@ -204,7 +320,6 @@ export default function DashboardPage() {
                                 durationMin={10}
                                 intensity="low"
                                 completed={true}
-                                // We don't mark this as 'completed' so the user can start it
                                 onStart={() => router.push("/workout/start")}
                             />
                         ) : stats.todaysWorkout.isRest ? (
@@ -230,8 +345,6 @@ export default function DashboardPage() {
                         )}
                     </div>
                 </section>
-
-
 
                 {/* Quick Actions */}
                 <section className="grid grid-cols-1 gap-4 animate-in slide-in-from-bottom-5 duration-700 delay-400">
