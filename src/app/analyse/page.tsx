@@ -143,7 +143,9 @@ export default function AnalysePage() {
                                         points: newStats.points,
                                         peerGroup: newStats.peerGroupLabel,
                                         last7DaysPoints: newStats.chartData,
-                                        recentWorkouts: workouts || []
+                                        recentWorkouts: workouts || [],
+                                        goals: profile.goals,
+                                        medicalConditions: profile.medical_conditions
                                     }
                                 })
                             });

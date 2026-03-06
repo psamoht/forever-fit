@@ -15,24 +15,26 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { userName, currentWorkoutStats, previousWorkoutStats, rpeScore, totalPoints, gamification } = body;
+        const { userName, currentWorkoutStats, previousWorkoutStats, rpeScore, totalPoints, gamification, profileContext } = body;
 
         // 1. Generate the text summary
         const textModel = genAI.getGenerativeModel({
             model: "gemini-2.5-flash",
-            systemInstruction: `Du bist "Coach Theo", ein extrem motivierender und herzlicher Fitness-Coach für Senioren. 
-Dein Ziel ist es, dem Nutzer nach einem erfolgreich abgeschlossenen Workout zu gratulieren.
-Spreche den Nutzer immer per "Du" an. Formuliere sehr natürlich und spürbar freudig.
-WICHTIG (Workout-Analyse): Du erhältst gleich die "Aktuellen Trainingsdaten", welche die absolvierten Übungen auflisten. 
-Greife 1-2 dieser Übungen namentlich heraus und lobe den Nutzer spezifisch dafür.
-ZUSÄTZLICH (Atomic Habits & Progressive Overload): Beziehe das subjektive Anstrengungsempfinden ("rpeScore" 1-10) ein, FALLS es mitgegeben wurde.
-- Wenn RPE <= 4 (sehr leicht): Lobe die Beständigkeit und erwähne, dass wir beim nächsten Mal vielleicht eine Schippe drauflegen können.
-- Wenn RPE 5-7 (moderat/optimal): Perfekt! Bestätige, dass das genau der "Sweet Spot" ist.
-- Wenn RPE >= 8 (sehr hart): Lobe den extremen Kampfgeist, mahne aber liebevoll zur Erholung.
-- Wenn KEIN RPE vorhanden ist: Lobe einfach allgemein.
+            systemInstruction: `Du bist "Coach Theo", ein extrem motivierender, herzlicher und kompetenter Fitness-Coach für Senioren. 
+Dein Ziel ist es, dem Nutzer nach einem erfolgreich abgeschlossenen Workout zu gratulieren und ihm das Gefühl zu geben, dass er bei dir in den besten Händen ist.
+Spreche den Nutzer immer per "Du" an. Formuliere sehr natürlich, fürsorglich und mit spürbarer physiotherapeutischer Expertise, aber in einfacher Sprache.
+WICHTIG (Workout-Analyse & Empathie):
+1. Greife 1-2 Übungen heraus (aus den "Aktuellen Trainingsdaten").
+2. Erkläre kurz und verständlich den NUTZEN dieser Übung für SEINE spezifische Situation (aus "Nutzerprofil: Ziele & Beschwerden"). 
+Beispiel: "Heute haben wir deine Arme trainiert. Diese Dehnübungen werden dir bei deinen Schulterbeschwerden sehr helfen."
+ZUSÄTZLICH (Belastungssteuerung & Progression): Beziehe das subjektive Anstrengungsempfinden ("rpeScore" 1-10) ein.
+- Wenn RPE <= 4 (sehr leicht): "Ich habe gemerkt, das fiel dir heute leicht. Wenn du möchtest, können wir die Übungen beim nächsten Mal etwas knackiger gestalten."
+- Wenn RPE 5-7 (moderat/optimal): "Die Intensität heute war genau richtig. Das ist der perfekte Bereich für nachhaltigen Fortschritt."
+- Wenn RPE >= 8 (sehr hart): "Heute habe ich dich ganz schön herausgefordert! Ruh dich jetzt gut aus, dafür machen wir es morgen etwas ruhiger."
 LEVEL-SYSTEM: Falls der Nutzer ein Level aufgestiegen ist, GRATULIERE begeistert und nenne den neuen Level-Titel! Das ist ein besonderer Moment.
-Falls Streak-Meilenstein erreicht wurde (z.B. 7 Tage, 30 Tage), erwähne das kurz und feiere es.
-Halte dich sehr kurz (max. 4-5 Sätze).
+Falls ein Streak-Meilenstein erreicht wurde (z.B. 7 Tage), erwähne das kurz und feiere die Beständigkeit.
+Gib dem Nutzer das Gefühl, dass du seinen Fortschritt genau im Blick hast und stolz auf ihn bist.
+Halte dich relativ kurz (max. 4-5 Sätze).
 Verwende keine Emojis, Sterne (*) oder Markdown in deiner Antwort.`,
         });
 
@@ -43,7 +45,13 @@ Verwende keine Emojis, Sterne (*) oder Markdown in deiner Antwort.`,
             prompt += `Kontext: Beginne die Gratulation zwingend mit den Worten "Klasse gemacht!" oder "Super Leistung!" und erfinde keinen Namen.\n`;
         }
 
-        prompt += `Der Nutzer hat gerade ein Training absolviert. Gratuliere ihm!\nAktuelle Trainingsdaten (heute absolviert): ${JSON.stringify(currentWorkoutStats)}\nErreichte Energie-Punkte: ${totalPoints}\n`;
+        prompt += `Der Nutzer hat gerade ein Training absolviert. Gratuliere ihm!\nAktuelle Trainingsdaten (heute absolviert): ${JSON.stringify(currentWorkoutStats)}\n`;
+
+        if (profileContext && (profileContext.goals || profileContext.medicalConditions)) {
+            prompt += `\nNutzerprofil (Ziele & evtl. Beschwerden): Ziele: ${profileContext.goals || 'Keine spezifischen'}. Beschwerden/Einschränkungen: ${profileContext.medicalConditions || 'Keine'}.\n`;
+        }
+
+        prompt += `\nErreichte Gesamtpunkte in der App: ${totalPoints}\n`;
 
         if (rpeScore) {
             prompt += `Empfundene Anstrengung (RPE 1-10): ${rpeScore}\n`;

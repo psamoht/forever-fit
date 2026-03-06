@@ -798,7 +798,11 @@ export default function WorkoutPlayerPage() {
                         streakDays: gamification.streakDays,
                         streakMilestone: gamification.streakMilestone?.message || null,
                         totalPoints: gamification.totalPoints
-                    } : null
+                    } : null,
+                    profileContext: {
+                        goals: globalProfile?.goals,
+                        medicalConditions: globalProfile?.medical_conditions
+                    }
                 })
             });
 
