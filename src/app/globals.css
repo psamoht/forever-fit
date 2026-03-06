@@ -1,26 +1,116 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* 
+      Palette: "Modern Vitality" 
+      Concept: Warm, organic, premium. Avoids cold clinical whites.
+    */
+
+    /* Background: Warm Sand / Cream */
+    --background: 40 20% 97%;
+    --foreground: 155 30% 15%;
+    /* Deep Jungle Green for text (softer than black) */
+
+    /* Primary: Eucalyptus / Sage - Calming but active */
+    --primary: 158 45% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary: Warm Peach/Clay - Friendly accents */
+    --secondary: 25 70% 90%;
+    --secondary-foreground: 25 40% 30%;
+
+    /* Muted/Card backgrounds */
+    --card: 0 0% 100%;
+    /* Pure white for contrast against oatmeal bg */
+    --card-foreground: 155 30% 15%;
+
+    --muted: 40 10% 90%;
+    --muted-foreground: 40 10% 40%;
+
+    --accent: 158 30% 95%;
+    /* Very light green for hovers */
+    --accent-foreground: 158 45% 40%;
+
+    --destructive: 0 70% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 40 10% 85%;
+    --input: 40 10% 85%;
+    --ring: 158 45% 40%;
+
+    --radius: 1.5rem;
+    /* Large, friendly corners */
+  }
+
+  .dark {
+    /* Background: Deep Black/Charcoal */
+    --background: 20 14.3% 4.1%;
+    --foreground: 60 9.1% 97.8%;
+
+    /* Primary: Eucalyptus (slightly lighter for dark mode) */
+    --primary: 158 45% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary: Darker Clay */
+    --secondary: 25 30% 20%;
+    --secondary-foreground: 25 70% 90%;
+
+    /* Card: Dark Grey */
+    --card: 24 5% 10%;
+    --card-foreground: 60 9.1% 97.8%;
+
+    --muted: 12 6.5% 15.1%;
+    --muted-foreground: 24 5.4% 63.9%;
+
+    --accent: 12 6.5% 15.1%;
+    --accent-foreground: 60 9.1% 97.8%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 12 6.5% 15.1%;
+    --input: 12 6.5% 15.1%;
+    --ring: 158 45% 50%;
+  }
+
+  html {
+    font-size: 16px;
+    /* Default base size */
+    /* Maintain readability */
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Global Font Size Scaling for seniors */
+  html[data-text-size="normal"] {
+    font-size: 16px;
+  }
+
+  html[data-text-size="large"] {
+    font-size: 18px;
+  }
+
+  html[data-text-size="xlarge"] {
+    font-size: 20px;
+  }
+
+  body {
+    min-height: 100vh;
+    /* Removed hardcoded background-color */
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .glass {
+    background-color: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
 }
