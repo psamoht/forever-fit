@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { useProfile } from "@/components/profile-provider";
 import { calculateExerciseScore, EXERCISE_SCORING_DICTIONARY, DEFAULT_SCORING, MuscleGroup } from "@/lib/scoring-system";
+import { computeUpdatedTrainingState, TrainingState } from "@/lib/training-state";
 
 export default function WorkoutPlayerPage() {
     const router = useRouter();
@@ -45,6 +46,8 @@ export default function WorkoutPlayerPage() {
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const hasFetched = useRef(false);
+    const workoutThemeRef = useRef<string>('mobility');
+    const variantsUsedRef = useRef<Record<number, string>>({});
 
     useEffect(() => {
         if (!hasFetched.current) {
@@ -74,6 +77,7 @@ export default function WorkoutPlayerPage() {
 
                 if (schedule?.theme) {
                     workoutTheme = schedule.theme;
+                    workoutThemeRef.current = schedule.theme;
                 }
                 if (schedule?.activity_title) {
                     activityTitle = schedule.activity_title;
@@ -107,7 +111,8 @@ export default function WorkoutPlayerPage() {
                         theme: workoutTheme,
                         activityTitle: activityTitle,
                         profile: userProfile,
-                        equipment: userEquipment
+                        equipment: userEquipment,
+                        trainingState: globalProfile?.training_state || null
                     })
                 });
 
@@ -505,7 +510,7 @@ export default function WorkoutPlayerPage() {
         }
     };
 
-    const handleDifficultyChange = (variant: Partial<Exercise>) => {
+    const handleDifficultyChange = (variant: Partial<Exercise>, variantType: 'easier' | 'harder') => {
         stopAudio();
 
         const newQueue = [...workoutQueue];
@@ -517,6 +522,9 @@ export default function WorkoutPlayerPage() {
 
         newQueue[currentIndex] = updatedExercise as Exercise;
         setWorkoutQueue(newQueue);
+
+        // Track which variant was chosen for this exercise index
+        variantsUsedRef.current[currentIndex] = variantType;
 
         if (updatedExercise.mode === 'timer') {
             setTimeLeft(updatedExercise.duration || 60);
@@ -617,7 +625,9 @@ export default function WorkoutPlayerPage() {
                     user_id: profile.id,
                     status: 'completed',
                     end_time: now.toISOString(),
-                    points_earned: totalPoints
+                    points_earned: totalPoints,
+                    rpe_score: rpeScore,
+                    theme: workoutThemeRef.current
                 }).select('id').single();
 
                 if (workoutError) throw workoutError;
@@ -629,7 +639,10 @@ export default function WorkoutPlayerPage() {
                         exercise_id: ex.id,
                         status: 'completed',
                         order_index: index,
-                        duration_seconds: ex.mode === 'timer' ? (ex.duration || 60) : (ex.reps || 10) // Approx
+                        duration_seconds: ex.mode === 'timer' ? (ex.duration || 60) : (ex.reps || 10), // Approx
+                        variant_used: variantsUsedRef.current[index] || 'standard',
+                        actual_reps: ex.mode === 'reps' ? (ex.reps || 10) : null,
+                        actual_sets: ex.sets || 1
                     }));
 
                     const { error: exercisesError } = await supabase.from('workout_exercises').insert(exerciseInserts);
@@ -646,6 +659,30 @@ export default function WorkoutPlayerPage() {
                     .eq('user_id', profile.id)
                     .eq('day_of_week', todayNameDe);
                 if (scheduleError) console.error("Could not update schedule:", scheduleError);
+
+                // 5. Update Training State (adaptive progression)
+                try {
+                    const currentTrainingState: TrainingState | null = profile.training_state || null;
+                    const variantsArray = workoutQueue.map((_, idx) => variantsUsedRef.current[idx] || 'standard');
+
+                    const newTrainingState = computeUpdatedTrainingState(currentTrainingState, {
+                        rpe: rpeScore,
+                        points: totalPoints,
+                        theme: workoutThemeRef.current,
+                        exercisesCompleted: workoutQueue.length,
+                        exercisesTotal: workoutQueue.length,
+                        variantsUsed: variantsArray
+                    });
+
+                    const { error: stateError } = await supabase.from('profiles').update({
+                        training_state: newTrainingState
+                    }).eq('id', user.id);
+
+                    if (stateError) console.error("Could not update training state:", stateError);
+                    else console.log("Training state updated:", newTrainingState);
+                } catch (stateErr) {
+                    console.error("Error computing training state:", stateErr);
+                }
 
                 setEarnedPoints(totalPoints);
 
@@ -882,7 +919,7 @@ export default function WorkoutPlayerPage() {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => handleDifficultyChange(currentExercise.easierVariant!)}
+                                    onClick={() => handleDifficultyChange(currentExercise.easierVariant!, 'easier')}
                                     className="border-slate-700 bg-slate-800 text-emerald-400 hover:bg-slate-700 hover:text-emerald-300 rounded-full"
                                 >
                                     Leichter
@@ -892,7 +929,7 @@ export default function WorkoutPlayerPage() {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => handleDifficultyChange(currentExercise.harderVariant!)}
+                                    onClick={() => handleDifficultyChange(currentExercise.harderVariant!, 'harder')}
                                     className="border-slate-700 bg-slate-800 text-orange-400 hover:bg-slate-700 hover:text-orange-300 rounded-full"
                                 >
                                     Schwieriger

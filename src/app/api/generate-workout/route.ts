@@ -10,7 +10,7 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
 export async function POST(req: Request) {
     try {
-        const { theme, activityTitle, profile, equipment } = await req.json();
+        const { theme, activityTitle, profile, equipment, trainingState } = await req.json();
 
         if (!theme || !profile) {
             return NextResponse.json({ error: "Missing required fields (theme or profile)" }, { status: 400 });
@@ -57,15 +57,93 @@ REGELN FÜR DIE GENERIERUNG:
 `;
         }
 
+        // Build adaptive training context from training state
+        let adaptiveContext = '';
+        if (trainingState) {
+            const pf = trainingState.progression_factor || 1.0;
+            const rs = trainingState.recovery_status || 'ready';
+            const wv = trainingState.weekly_volume || {};
+            const avgRpe = trainingState.avg_rpe_last_5 || 5.0;
+            const recentWorkouts = trainingState.recent_workouts || [];
+
+            // Progression block
+            adaptiveContext += `
+PROGRESSIONS-STEUERUNG:
+- Aktueller Progressions-Faktor: ${pf.toFixed(2)}
+- Bei Faktor 1.0: Standard-Intensität (z.B. 10 Wiederholungen, 2 Sätze, 30 Sek. Planks)
+- Bei Faktor > 1.0: Intensität proportional erhöhen (z.B. bei 1.15: ~12 Wiederholungen, 35 Sek. Planks)
+- Bei Faktor < 1.0: Intensität proportional senken (z.B. bei 0.8: ~8 Wiederholungen, 25 Sek. Planks)
+- Durchschnittliche Belastungseinschätzung der letzten 5 Einheiten (RPE): ${avgRpe.toFixed(1)} / 10
+- Passe Reps, Dauer, Sätze UND Übungsauswahl entsprechend dem Faktor an.
+`;
+
+            // Recovery block
+            if (rs === 'comeback') {
+                adaptiveContext += `
+WICHTIG - WIEDEREINSTIEG NACH PAUSE:
+Der Nutzer kehrt nach einer längeren Pause zurück. Starte SANFT:
+- Maximal 3 leichte Übungen
+- Fokus auf Mobility und leichte Bodyweight-Bewegungen
+- Niedrige Wiederholungszahlen (50-60% des Normalwerts)
+- Längere Pausen zwischen Übungen einplanen
+- KEINE anspruchsvollen Kraft- oder Cardio-Übungen
+`;
+            } else if (rs === 'building') {
+                adaptiveContext += `
+AUFBAUPHASE:
+Der Nutzer baut nach einer Pause gerade wieder auf:
+- Maximal 4 Übungen erlaubt
+- Intensität bei 80% des Normalwerts
+- Langsam steigern, aber noch nicht volle Belastung
+`;
+            }
+
+            // Muscle balance block
+            const totalVolume = Object.values(wv).reduce((sum: number, val: any) => sum + (val || 0), 0);
+            if (totalVolume > 0) {
+                const categories = [
+                    { key: 'upper_body', label: 'Oberkörper', val: wv.upper_body || 0 },
+                    { key: 'lower_body', label: 'Unterkörper', val: wv.lower_body || 0 },
+                    { key: 'core', label: 'Core/Rumpf', val: wv.core || 0 },
+                    { key: 'flexibility', label: 'Beweglichkeit', val: wv.flexibility || 0 },
+                    { key: 'cardio', label: 'Ausdauer', val: wv.cardio || 0 }
+                ];
+                const avg = totalVolume / categories.length;
+                const neglected = categories.filter(c => c.val < avg * 0.5).map(c => c.label);
+                const overtrained = categories.filter(c => c.val > avg * 1.5).map(c => c.label);
+
+                adaptiveContext += `
+MUSKELGRUPPEN-BALANCE DIESE WOCHE (letzte 7 Tage):
+${categories.map(c => `- ${c.label}: ${c.val} Punkte`).join('\n')}
+${neglected.length > 0 ? `VERNACHLÄSSIGT: ${neglected.join(', ')} → Bevorzuge Übungen für diese Gruppen!` : ''}
+${overtrained.length > 0 ? `BEREITS VIEL TRAINIERT: ${overtrained.join(', ')} → Weniger Fokus darauf.` : ''}
+`;
+            }
+
+            // Recent workout history (last 3)
+            if (recentWorkouts.length > 0) {
+                const last3 = recentWorkouts.slice(-3);
+                adaptiveContext += `
+LETZTE TRAININGSEINHEITEN:
+${last3.map((w: any) => `- ${w.date}: Thema "${w.theme}", RPE ${w.rpe}/10, ${w.exercises_completed}/${w.exercises_total} Übungen`).join('\n')}
+Vermeide zu viel Wiederholung der gleichen Übungen. Bringe Abwechslung rein!
+`;
+            }
+        }
+
         const systemPrompt = `
 Du bist ein renommierter Sportwissenschaftler und Personal Trainer für Senioren (60+).
 Deine Aufgabe ist es, ein maßgeschneidertes, absolut sicheres und hoch-effektives Workout-Programm für die heutige Trainingseinheit zu generieren.
 
 KONTEXT DES NUTZERS:
-- Alter/Zielgruppe: 60+ Jahre (Best Ager)
+- Alter: ${profile.birth_year ? `${new Date().getFullYear() - profile.birth_year} Jahre` : '60+ Jahre (Best Ager)'}
+- Geschlecht: ${profile.gender === 'male' ? 'Männlich' : profile.gender === 'female' ? 'Weiblich' : 'Nicht angegeben'}
+- Gewicht: ${profile.weight ? profile.weight + ' kg' : 'Nicht angegeben'}
 - Ziele: ${profile.goals || 'Allgemeine Fitness und Beweglichkeit'}
 - Gesundheitliche Einschränkungen: ${profile.medical_conditions || 'Keine bekannten Einschränkungen'}
 - Vorhandenes Equipment: ${equipment?.join(', ') || 'Nur Körpergewicht'}
+
+${adaptiveContext}
 
 ${activitySpecificInstructions}
 
