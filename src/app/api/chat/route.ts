@@ -3,12 +3,32 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
     try {
-        const { message, history } = await req.json();
+        const { message, history, profileContext } = await req.json();
 
-        // Construct the context-aware prompt
-        // Ideally we maintain a clean chat session object, but for now we reconstruct.
-        // Gemini requires history to start with 'user'.
-        // If our UI starts with a model greeting, we need to prepend a fake user message.
+        // Build context-aware prompt with user's current state
+        let contextBlock = '';
+        if (profileContext) {
+            const p = profileContext;
+            contextBlock = `
+
+AKTUELLER KONTEXT DES NUTZERS (nutze diese Infos, um fundierte Antworten zu geben):
+- Name: ${p.display_name || 'Unbekannt'}
+- Alter: ${p.birth_year ? `${new Date().getFullYear() - p.birth_year} Jahre` : 'Nicht angegeben'}
+- Geschlecht: ${p.gender === 'male' ? 'Männlich' : p.gender === 'female' ? 'Weiblich' : 'Nicht angegeben'}
+- Ziele: ${p.goals || 'Nicht festgelegt'}
+- Einschränkungen: ${p.medical_conditions || 'Keine bekannten'}
+- Equipment: ${p.equipment ? JSON.stringify(p.equipment) : 'Nur Körpergewicht'}
+${p.training_state ? `- Progressions-Faktor: ${p.training_state.progression_factor?.toFixed(2) || '1.00'}
+- Recovery-Status: ${p.training_state.recovery_status || 'ready'}
+- Durchschnittliche RPE (letzte 5): ${p.training_state.avg_rpe_last_5?.toFixed(1) || '5.0'}` : ''}
+${p.currentSchedule ? `- Aktueller Wochenplan:
+${p.currentSchedule.map((s: any) => `  ${s.day_of_week}: ${s.activity_title || s.theme || 'Ruhetag'} (${s.theme || 'rest'})`).join('\n')}` : ''}
+`;
+        }
+
+        // Combine system prompt with live context
+        const fullSystemPrompt = COACH_SYSTEM_PROMPT + contextBlock;
+
         const formattedHistory = history.map((h: any) => ({
             role: h.role,
             parts: [{ text: h.text }]
@@ -17,78 +37,98 @@ export async function POST(req: Request) {
         if (formattedHistory.length > 0 && formattedHistory[0].role === 'model') {
             formattedHistory.unshift({
                 role: 'user',
-                parts: [{ text: "Hallo Coach, ich starte jetzt das Assessment." }]
+                parts: [{ text: "Hallo Coach, ich bin hier." }]
             });
         }
 
         const chat = model.startChat({
             history: formattedHistory,
             generationConfig: {
-                maxOutputTokens: 500,
+                maxOutputTokens: 1000,
             },
             systemInstruction: {
                 role: "system",
-                parts: [{ text: COACH_SYSTEM_PROMPT }]
+                parts: [{ text: fullSystemPrompt }]
             }
         });
 
-        // NOTE: handling system instruction in Gemini API via REST sometimes needs specific formatting or 'system' role depending on SDK version.
-        // The GoogleGenerativeAI SDK supports `systemInstruction` in `getGenerativeModel` config, or we can prepend it.
-        // Let's refine the model initialization in lib/gemini.ts if needed, but for now prepending context is safer if unsure about SDK version features.
-
-        // Actually, for simple context, let's just send the message.
         const result = await chat.sendMessage(message);
         const response = result.response;
         const text = response.text();
 
-        // Check for JSON block indicating assessment completion
+        // Parse all JSON action blocks from the response
         let assessmentComplete = false;
         let profileData = null;
         let cleanText = text;
+        const actions: any[] = [];
 
-        const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-        if (jsonMatch) {
+        // Find ALL json blocks in the response
+        const jsonRegex = /```json\n([\s\S]*?)\n```/g;
+        let match;
+        while ((match = jsonRegex.exec(text)) !== null) {
             try {
-                const jsonStr = jsonMatch[1];
-                const data = JSON.parse(jsonStr);
+                const data = JSON.parse(match[1]);
 
-                // Case 1: Assessment
+                // Assessment completion
                 if (data.assessment_complete) {
                     assessmentComplete = true;
                     profileData = data.data;
-                    cleanText = text.replace(jsonMatch[0], "").trim();
                 }
 
-                // Case 2: Equipment Update
-                if (data.update_equipment) {
-                    cleanText = text.replace(jsonMatch[0], "").trim();
-                    profileData = {
-                        action: 'update_equipment',
-                        payload: data.update_equipment
-                    };
-                }
-
-                // Case 3: Schedule Update
+                // Schedule update
                 if (data.update_schedule) {
-                    cleanText = text.replace(jsonMatch[0], "").trim();
-                    profileData = {
+                    actions.push({
                         action: 'update_schedule',
                         payload: data.update_schedule
-                    };
+                    });
                 }
 
+                // Training state update (for recovery/progression adjustments)
+                if (data.update_training_state) {
+                    actions.push({
+                        action: 'update_training_state',
+                        payload: data.update_training_state
+                    });
+                }
+
+                // Profile update (goals, medical conditions)
+                if (data.update_profile) {
+                    actions.push({
+                        action: 'update_profile',
+                        payload: data.update_profile
+                    });
+                }
+
+                // Equipment update
+                if (data.update_equipment) {
+                    actions.push({
+                        action: 'update_equipment',
+                        payload: data.update_equipment
+                    });
+                }
+
+                // Remove JSON block from visible text
+                cleanText = cleanText.replace(match[0], '').trim();
             } catch (e) {
                 console.error("Failed to parse JSON from model response", e);
             }
         }
 
+        // If there are actions, set profileData to the first one (backward compat)
+        // and attach all actions for the frontend to process
+        if (actions.length > 0 && !profileData) {
+            profileData = actions[0];
+        }
+
         return NextResponse.json({
             text: cleanText,
             assessmentComplete,
-            profileData // This now carries either assessment data OR action data
+            profileData,
+            actions // All parsed actions for the frontend
         });
     } catch (error) {
         console.error("API Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
+

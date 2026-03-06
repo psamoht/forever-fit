@@ -32,7 +32,7 @@ export default function WeeklyPlanPage() {
     const [hasWorkedOutToday, setHasWorkedOutToday] = useState(false);
     const [workedOutDates, setWorkedOutDates] = useState<Record<string, number>>({});
     const router = useRouter(); // Need to import useRouter at top
-    const { profile: globalProfile, isLoading: isProfileLoading } = useProfile();
+    const { profile: globalProfile, isLoading: isProfileLoading, refreshProfile } = useProfile();
 
     useEffect(() => {
         if (!isProfileLoading) {
@@ -209,6 +209,7 @@ export default function WeeklyPlanPage() {
 
     const handleChatAction = async (data: any) => {
         console.log("Chat action received:", data);
+
         if (data?.action === 'update_schedule' && data.payload) {
             setLoading(true);
             try {
@@ -248,6 +249,73 @@ export default function WeeklyPlanPage() {
                 toast.error("Fehler beim Aktualisieren des Plans.");
             } finally {
                 setLoading(false);
+            }
+        }
+
+        if (data?.action === 'update_training_state' && data.payload) {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const { data: profileData } = await supabase
+                    .from('profiles')
+                    .select('training_state')
+                    .eq('id', user.id)
+                    .single();
+
+                const currentState = profileData?.training_state || {};
+                const updates = data.payload;
+
+                // Apply adjustments
+                const newState = { ...currentState };
+                if (updates.recovery_status) {
+                    newState.recovery_status = updates.recovery_status;
+                }
+                if (typeof updates.progression_factor_adjustment === 'number') {
+                    const current = newState.progression_factor || 1.0;
+                    newState.progression_factor = Math.max(0.5, Math.min(2.0,
+                        parseFloat((current + updates.progression_factor_adjustment).toFixed(2))
+                    ));
+                }
+
+                const { error } = await supabase
+                    .from('profiles')
+                    .update({ training_state: newState })
+                    .eq('id', user.id);
+
+                if (!error) {
+                    toast.success("Trainingsstatus aktualisiert!");
+                    refreshProfile();
+                }
+            } catch (e) {
+                console.error("Error updating training state via chat:", e);
+            }
+        }
+
+        if (data?.action === 'update_profile' && data.payload) {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const updates: any = {};
+                if (data.payload.goals) updates.goals = data.payload.goals;
+                if (data.payload.medical_conditions !== undefined) {
+                    updates.medical_conditions = data.payload.medical_conditions;
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    const { error } = await supabase
+                        .from('profiles')
+                        .update(updates)
+                        .eq('id', user.id);
+
+                    if (!error) {
+                        toast.success("Profil aktualisiert!");
+                        refreshProfile();
+                    }
+                }
+            } catch (e) {
+                console.error("Error updating profile via chat:", e);
             }
         }
     };

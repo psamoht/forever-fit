@@ -16,9 +16,10 @@ interface Message {
 interface ChatInterfaceProps {
     initialMessage?: string;
     onComplete?: (summary: any) => void;
+    profileContext?: any;
 }
 
-export function ChatInterface({ initialMessage, onComplete }: ChatInterfaceProps) {
+export function ChatInterface({ initialMessage, onComplete, profileContext }: ChatInterfaceProps) {
     const [messages, setMessages] = useState<Message[]>(
         initialMessage ? [{ role: "model", text: initialMessage }] : []
     );
@@ -60,7 +61,8 @@ export function ChatInterface({ initialMessage, onComplete }: ChatInterfaceProps
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     history: messages,
-                    message: userMsg
+                    message: userMsg,
+                    profileContext: profileContext || null
                 }),
             });
 
@@ -70,17 +72,24 @@ export function ChatInterface({ initialMessage, onComplete }: ChatInterfaceProps
                 setMessages((prev) => [...prev, { role: "model", text: data.text }]);
             }
 
-            if (data.profileData) {
-                // Dispatch global event for detached listeners (e.g. Plan Page listening to FAB)
+            // Process ALL actions returned by the API
+            if (data.actions && data.actions.length > 0) {
+                for (const action of data.actions) {
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('coach:action', { detail: action }));
+                    }
+                }
+            }
+
+            // Backward compatibility: single profileData event
+            if (data.profileData && (!data.actions || data.actions.length === 0)) {
                 if (typeof window !== 'undefined') {
                     window.dispatchEvent(new CustomEvent('coach:action', { detail: data.profileData }));
                 }
-
                 if (onComplete) {
                     onComplete(data.profileData);
                 }
             } else if (data.assessmentComplete && onComplete) {
-                // Fallback for older API behavior if profileData wasn't sent but flag was
                 onComplete(data.profileData);
             }
 
