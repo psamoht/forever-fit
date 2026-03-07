@@ -1,5 +1,6 @@
 import { model } from "@/lib/gemini";
 import { NextResponse } from "next/server";
+import { logApiUsage, logUserActivity } from "@/lib/admin-logger";
 import { Exercise } from "@/lib/workout-data";
 import { createClient } from "@supabase/supabase-js";
 
@@ -192,6 +193,15 @@ Beispiel (Struktur):
 
         const result = await chat.sendMessage(systemPrompt);
         const text = result.response.text();
+
+        const inputTokens = result.response.usageMetadata?.promptTokenCount || 0;
+        const outputTokens = result.response.usageMetadata?.candidatesTokenCount || 0;
+        const userId = profile?.id || null;
+
+        Promise.all([
+            logApiUsage(userId, 'generate-workout', inputTokens, outputTokens),
+            logUserActivity(userId, 'workout_generated', `Generated plan for theme: ${theme}`, { theme })
+        ]).catch(e => console.error("Admin Logging Error:", e));
 
         // Extrahiere das JSON Array
         let jsonStr = text;

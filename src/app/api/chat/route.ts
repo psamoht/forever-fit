@@ -1,5 +1,6 @@
 import { COACH_SYSTEM_PROMPT, model } from "@/lib/gemini";
 import { NextResponse } from "next/server";
+import { logApiUsage, logUserActivity } from "@/lib/admin-logger";
 
 export async function POST(req: Request) {
     try {
@@ -55,6 +56,15 @@ ${p.currentSchedule.map((s: any) => `  ${s.day_of_week}: ${s.activity_title || s
         const result = await chat.sendMessage(message);
         const response = result.response;
         const text = response.text();
+
+        const inputTokens = response.usageMetadata?.promptTokenCount || 0;
+        const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
+        const userId = profileContext?.id || null;
+
+        Promise.all([
+            logApiUsage(userId, 'chat', inputTokens, outputTokens),
+            logUserActivity(userId, 'chat_interaction', 'Interacted with Coach Theo in Chat', { messageLength: message?.length || 0 })
+        ]).catch(e => console.error("Admin Logging Error:", e));
 
         // Parse all JSON action blocks from the response
         let assessmentComplete = false;
