@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { toast } from "sonner";
 
 interface ProfileContextType {
     profile: any | null;
@@ -79,6 +80,92 @@ export const ProfileProvider = ({ children }: { children: React.ReactNode }) => 
         return () => {
             subscription.unsubscribe();
         };
+    }, []);
+
+    // Global listener for Chat AI Profile Actions
+    useEffect(() => {
+        const handleCoachAction = async (e: any) => {
+            const data = e.detail;
+            if (!data) return;
+
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            // Handle Profile Updates (Goals, Medical Conditions)
+            if (data.action === 'update_profile' && data.payload) {
+                try {
+                    const updates: any = {};
+                    if (data.payload.goals) updates.goals = data.payload.goals;
+                    if (data.payload.medical_conditions !== undefined && data.payload.medical_conditions !== null) {
+                        let conditionsArray: string[] = [];
+                        if (Array.isArray(data.payload.medical_conditions)) {
+                            conditionsArray = data.payload.medical_conditions;
+                        } else if (typeof data.payload.medical_conditions === 'string') {
+                            conditionsArray = data.payload.medical_conditions.split(',').map((s: string) => s.trim()).filter(Boolean);
+                        }
+                        updates.medical_conditions = JSON.stringify(conditionsArray);
+                    } else if (data.payload.medical_conditions === null) {
+                        updates.medical_conditions = null;
+                    }
+
+                    if (Object.keys(updates).length > 0) {
+                        const { error } = await supabase
+                            .from('profiles')
+                            .update(updates)
+                            .eq('id', user.id);
+
+                        if (!error) {
+                            toast.success("Dein Profil wurde von Coach Theo aktualisiert!");
+                            fetchProfile();
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error updating profile via chat globally:", err);
+                }
+            }
+
+            // Handle Training State Updates (Recovery, Progression)
+            if (data.action === 'update_training_state' && data.payload) {
+                try {
+                    const { data: profileData } = await supabase
+                        .from('profiles')
+                        .select('training_state')
+                        .eq('id', user.id)
+                        .single();
+
+                    const currentState = profileData?.training_state || {};
+                    const updates = data.payload;
+
+                    const newState = { ...currentState };
+                    if (updates.recovery_status) {
+                        newState.recovery_status = updates.recovery_status;
+                    }
+                    if (typeof updates.progression_factor_adjustment === 'number') {
+                        const current = newState.progression_factor || 1.0;
+                        newState.progression_factor = Math.max(0.5, Math.min(2.0,
+                            parseFloat((current + updates.progression_factor_adjustment).toFixed(2))
+                        ));
+                    }
+
+                    const { error } = await supabase
+                        .from('profiles')
+                        .update({ training_state: newState })
+                        .eq('id', user.id);
+
+                    if (!error) {
+                        toast.success("Trainingsstatus wurde von Theo angepasst!");
+                        fetchProfile();
+                    }
+                } catch (err) {
+                    console.error("Error updating training state via chat globally:", err);
+                }
+            }
+        };
+
+        if (typeof window !== 'undefined') {
+            window.addEventListener('coach:action', handleCoachAction);
+            return () => window.removeEventListener('coach:action', handleCoachAction);
+        }
     }, []);
 
     return (
