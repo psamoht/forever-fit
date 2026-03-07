@@ -50,6 +50,7 @@ export default function WorkoutPlayerPage() {
     const hasFetched = useRef(false);
     const workoutThemeRef = useRef<string>('mobility');
     const variantsUsedRef = useRef<Record<number, string>>({});
+    const startTimeRef = useRef(new Date());
 
     useEffect(() => {
         if (!hasFetched.current) {
@@ -72,10 +73,17 @@ export default function WorkoutPlayerPage() {
 
                 const { data: schedule } = await supabase
                     .from("weekly_schedules")
-                    .select("theme, activity_title")
+                    .select("theme, activity_title, activity_type")
                     .eq("user_id", user.id)
                     .eq("day_of_week", todayName)
                     .single();
+
+                // SAFETY GUARD: If today is NOT a workout day, redirect immediately.
+                // This prevents exercises from being generated for rest/active_recovery/etc.
+                if (schedule && schedule.activity_type !== 'workout') {
+                    router.push('/workout/rest');
+                    return;
+                }
 
                 if (schedule?.theme) {
                     workoutTheme = schedule.theme;
@@ -638,6 +646,21 @@ export default function WorkoutPlayerPage() {
                 }).select('id').single();
 
                 if (workoutError) throw workoutError;
+
+                const actualDurationSeconds = Math.round((now.getTime() - startTimeRef.current.getTime()) / 1000);
+
+                // Fire telemetry to admin dashboard silently
+                fetch('/api/track', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: user.id,
+                        type: 'workout_completed',
+                        description: `Completed ${workoutThemeRef.current || 'Workout'}`,
+                        metadata: { points: totalPoints, rpe: rpeScore, actualDurationSeconds }
+                    }),
+                }).catch(() => { });
+
 
                 // 4b. Log individual workout exercises
                 if (newWorkoutData && newWorkoutData.id) {

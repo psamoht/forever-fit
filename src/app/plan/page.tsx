@@ -415,7 +415,7 @@ export default function WeeklyPlanPage() {
                                 {selectedDay.isToday ? (
                                     <Button
                                         className="w-full text-lg h-14 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/20 mt-4"
-                                        onClick={() => router.push(selectedDay.activity_type === 'rest' ? '/workout/rest' : '/workout/start')}
+                                        onClick={() => router.push(selectedDay.activity_type === 'workout' ? '/workout/start' : '/workout/rest')}
                                     >
                                         <Play className="mr-2 h-5 w-5 fill-current" />
                                         Training jetzt starten

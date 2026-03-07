@@ -6,6 +6,8 @@ import { Toaster } from "sonner";
 import { CoachFAB } from "@/components/coach-fab";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ProfileProvider } from "@/components/profile-provider";
+import { TelemetryProvider } from "@/components/telemetry-provider";
+import { HeatmapOverlay } from "@/components/heatmap-overlay";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,11 +42,14 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <ProfileProvider>
-            <Navbar />
-            <main className="mx-auto max-w-lg p-6 pb-24">
-              {children}
-            </main>
-            <CoachFAB />
+            <TelemetryProvider>
+              <Navbar />
+              <main className="mx-auto max-w-lg p-6 pb-24">
+                {children}
+              </main>
+              <CoachFAB />
+              <HeatmapOverlay />
+            </TelemetryProvider>
             <Toaster position="top-center" richColors />
           </ProfileProvider>
         </ThemeProvider>

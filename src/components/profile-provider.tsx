@@ -52,6 +52,14 @@ export const ProfileProvider = ({ children }: { children: React.ReactNode }) => 
             if (profileData) {
                 setProfile(profileData);
                 finalName = profileData.display_name || finalName;
+
+                // Track daily active user without spamming
+                fetch('/api/track', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: user.id, type: 'app_opened', description: 'User opened app' }),
+                }).catch(() => { });
+
             } else {
                 setProfile(null);
             }
@@ -158,6 +166,57 @@ export const ProfileProvider = ({ children }: { children: React.ReactNode }) => 
                     }
                 } catch (err) {
                     console.error("Error updating training state via chat globally:", err);
+                }
+            }
+
+            // Handle Schedule Updates (Wochenplan anpassen)
+            if (data.action === 'update_schedule' && data.payload) {
+                try {
+                    const updates = Array.isArray(data.payload) ? data.payload : [data.payload];
+
+                    // Fetch current schedule to find IDs
+                    const { data: currentSchedule } = await supabase
+                        .from('weekly_schedules')
+                        .select('*')
+                        .eq('user_id', user.id);
+
+                    let successCount = 0;
+                    for (const update of updates) {
+                        if (update.day && update.activity_type) {
+                            const existing = currentSchedule?.find(s => s.day_of_week === update.day);
+
+                            if (existing) {
+                                const { error } = await supabase
+                                    .from('weekly_schedules')
+                                    .update({
+                                        activity_title: update.activity_title || existing.activity_title,
+                                        activity_type: update.activity_type,
+                                        theme: update.theme || existing.theme
+                                    })
+                                    .eq('id', existing.id);
+                                if (!error) successCount++;
+                            } else {
+                                // No existing entry for that day — insert
+                                const { error } = await supabase
+                                    .from('weekly_schedules')
+                                    .insert({
+                                        user_id: user.id,
+                                        day_of_week: update.day,
+                                        activity_title: update.activity_title || 'Neues Training',
+                                        activity_type: update.activity_type,
+                                        theme: update.theme || 'full_body'
+                                    });
+                                if (!error) successCount++;
+                            }
+                        }
+                    }
+
+                    if (successCount > 0) {
+                        toast.success(`Coach Theo hat ${successCount} Tag(e) in deinem Wochenplan angepasst!`);
+                    }
+                } catch (err) {
+                    console.error("Error updating schedule via chat globally:", err);
+                    toast.error("Fehler beim Aktualisieren des Plans.");
                 }
             }
         };

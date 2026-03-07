@@ -77,7 +77,10 @@ export default function DashboardPage() {
                     if (schedule) {
                         workoutTitle = schedule.activity_title;
                         workoutTheme = schedule.theme || "mobility";
-                        if (schedule.activity_type === 'rest') isRestDay = true;
+                        // IMPORTANT: Only activity_type === 'workout' triggers exercises.
+                        // Everything else (rest, active_recovery, or anything the AI invents)
+                        // routes to the rest/recovery confirmation page.
+                        isRestDay = schedule.activity_type !== 'workout';
                     }
 
                     let isTodayDone = false;
@@ -209,100 +212,8 @@ export default function DashboardPage() {
                     </Link>
                 </div>
 
-                {/* Level Card */}
-                {levelInfo && (
-                    <div className="animate-in slide-in-from-bottom-5 duration-700 delay-50">
-                        <Card className="p-5 border-none bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-700 dark:to-teal-700 shadow-lg shadow-emerald-500/20 rounded-2xl text-white">
-                            <div className="flex items-center justify-between mb-3">
-                                <div className="flex items-center gap-3">
-                                    <span className="text-3xl">{levelInfo.emoji}</span>
-                                    <div>
-                                        <p className="text-emerald-100 text-xs font-bold uppercase tracking-wider">Level {levelInfo.level}</p>
-                                        <h3 className="text-xl font-extrabold">{levelInfo.title}</h3>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-2xl font-bold">{stats.points}</p>
-                                    <p className="text-emerald-200 text-xs">Punkte</p>
-                                </div>
-                            </div>
-                            <div className="space-y-1">
-                                <div className="flex justify-between text-xs text-emerald-200">
-                                    <span>{stats.points} / {levelInfo.pointsForNext}</span>
-                                    <span>Nächstes Level</span>
-                                </div>
-                                <div className="w-full bg-white/20 rounded-full h-2">
-                                    <div
-                                        className="bg-white rounded-full h-2 transition-all duration-700"
-                                        style={{ width: `${levelProgress}%` }}
-                                    />
-                                </div>
-                            </div>
-                        </Card>
-                    </div>
-                )}
-
-                {/* Stats Grid */}
-                <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-bottom-5 duration-700 delay-100">
-                    <div className="bg-card p-4 rounded-2xl shadow-sm border border-border flex flex-col items-center justify-center space-y-2">
-                        <div className={`h-10 w-10 rounded-full flex items-center justify-center ${stats.streak >= 7
-                                ? 'bg-orange-200 dark:bg-orange-800/40'
-                                : 'bg-orange-100 dark:bg-orange-900/30'
-                            } text-orange-600 dark:text-orange-400`}>
-                            <Flame size={getFlameSize(stats.streak)} fill="currentColor" className={stats.streak >= 7 ? 'animate-pulse' : ''} />
-                        </div>
-                        <div className="text-center">
-                            <span className="block text-2xl font-bold text-foreground">{stats.streak}</span>
-                            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Tage Streak</span>
-                        </div>
-                    </div>
-                    <div className="bg-card p-4 rounded-2xl shadow-sm border border-border flex flex-col items-center justify-center space-y-2">
-                        <div className="h-10 w-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-full flex items-center justify-center text-yellow-600 dark:text-yellow-400">
-                            <Star size={20} fill="currentColor" />
-                        </div>
-                        <div className="text-center">
-                            <span className="block text-2xl font-bold text-foreground">{stats.points}</span>
-                            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Punkte</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Weekly Challenge */}
-                {challenge && (
-                    <div className="animate-in slide-in-from-bottom-5 duration-700 delay-150">
-                        <div className="flex items-center gap-2 mb-3 px-1">
-                            <Target size={16} className="text-emerald-600 dark:text-emerald-400" />
-                            <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Wochenaufgabe</h2>
-                        </div>
-                        <Card className={`p-5 border-none shadow-sm rounded-2xl ${challengeProgress.isComplete
-                                ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
-                                : 'bg-card'
-                            }`}>
-                            <div className="flex items-start gap-4">
-                                <span className="text-3xl">{challengeProgress.isComplete ? '✅' : challenge.emoji}</span>
-                                <div className="flex-1">
-                                    <h3 className="font-bold text-foreground">{challenge.title}</h3>
-                                    <p className="text-sm text-muted-foreground mt-0.5">{challenge.description}</p>
-                                    <div className="mt-3 space-y-1">
-                                        <div className="flex justify-between text-xs font-medium">
-                                            <span className={challengeProgress.isComplete ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-muted-foreground'}>
-                                                {challengeProgress.isComplete ? 'Geschafft! 🎉' : `${challengeProgress.current} / ${challengeProgress.target}`}
-                                            </span>
-                                            <span className="text-muted-foreground">{challengeProgress.percentage}%</span>
-                                        </div>
-                                        <Progress
-                                            value={challengeProgress.percentage}
-                                            className="h-2"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
-                    </div>
-                )}
-
-                {/* Workout Card */}
-                <section className="space-y-6 animate-in slide-in-from-bottom-5 duration-700 delay-200">
+                {/* ===== HERO: Today's Workout (Always first!) ===== */}
+                <section className="space-y-4 animate-in slide-in-from-bottom-5 duration-700 delay-50">
                     <div className="flex items-center justify-between px-1">
                         <h2 className="text-xl font-bold text-foreground">
                             {stats.isTodayDone ? "Training abgeschlossen" : "Dein Plan für heute"}
@@ -330,8 +241,8 @@ export default function DashboardPage() {
                                         <Clock size={32} />
                                     </div>
                                     <div className="z-10 relative">
-                                        <h3 className="text-xl font-bold text-foreground mb-1">Ruhetag</h3>
-                                        <p className="text-muted-foreground">Heute steht Erholung an. Hier tippen.</p>
+                                        <h3 className="text-xl font-bold text-foreground mb-1">{stats.todaysWorkout.title}</h3>
+                                        <p className="text-muted-foreground">Aktive Erholung oder Ruhetag. Hier tippen.</p>
                                     </div>
                                 </Card>
                             </div>
@@ -345,6 +256,85 @@ export default function DashboardPage() {
                         )}
                     </div>
                 </section>
+
+                {/* ===== Compact Gamification Strip ===== */}
+                <div className="grid grid-cols-5 gap-3 animate-in slide-in-from-bottom-5 duration-700 delay-100">
+                    {/* Streak */}
+                    <div className="col-span-2 bg-card p-3 rounded-2xl shadow-sm border border-border flex flex-col items-center justify-center space-y-1">
+                        <div className={`h-8 w-8 rounded-full flex items-center justify-center ${stats.streak >= 7
+                            ? 'bg-orange-200 dark:bg-orange-800/40'
+                            : 'bg-orange-100 dark:bg-orange-900/30'
+                            } text-orange-600 dark:text-orange-400`}>
+                            <Flame size={getFlameSize(stats.streak)} fill="currentColor" className={stats.streak >= 7 ? 'animate-pulse' : ''} />
+                        </div>
+                        <span className="block text-lg font-bold text-foreground leading-tight">{stats.streak}</span>
+                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Tage Streak</span>
+                    </div>
+
+                    {/* Level + Points (combined) */}
+                    {levelInfo && (
+                        <div className="col-span-3 bg-card p-3 rounded-2xl shadow-sm border border-border flex flex-col justify-center space-y-2">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xl">{levelInfo.emoji}</span>
+                                    <div>
+                                        <span className="block text-sm font-bold text-foreground leading-tight">Lv. {levelInfo.level} – {levelInfo.title}</span>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="block text-lg font-bold text-foreground leading-tight">{stats.points}</span>
+                                    <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Punkte</span>
+                                </div>
+                            </div>
+                            <div className="space-y-0.5">
+                                <div className="flex justify-between text-[10px] text-muted-foreground font-medium">
+                                    <span>{stats.points} / {levelInfo.pointsForNext}</span>
+                                    <span>Nächstes Level</span>
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-1.5">
+                                    <div
+                                        className="bg-emerald-500 rounded-full h-1.5 transition-all duration-700"
+                                        style={{ width: `${levelProgress}%` }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* ===== Weekly Challenge ===== */}
+                {challenge && (
+                    <div className="animate-in slide-in-from-bottom-5 duration-700 delay-150">
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                            <Target size={16} className="text-emerald-600 dark:text-emerald-400" />
+                            <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Wochenaufgabe</h2>
+                        </div>
+                        <Card className={`p-5 border-none shadow-sm rounded-2xl ${challengeProgress.isComplete
+                            ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                            : 'bg-card'
+                            }`}>
+                            <div className="flex items-start gap-4">
+                                <span className="text-3xl">{challengeProgress.isComplete ? '✅' : challenge.emoji}</span>
+                                <div className="flex-1">
+                                    <h3 className="font-bold text-foreground">{challenge.title}</h3>
+                                    <p className="text-sm text-muted-foreground mt-0.5">{challenge.description}</p>
+                                    <div className="mt-3 space-y-1">
+                                        <div className="flex justify-between text-xs font-medium">
+                                            <span className={challengeProgress.isComplete ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-muted-foreground'}>
+                                                {challengeProgress.isComplete ? 'Geschafft! 🎉' : `${challengeProgress.current} / ${challengeProgress.target}`}
+                                            </span>
+                                            <span className="text-muted-foreground">{challengeProgress.percentage}%</span>
+                                        </div>
+                                        <Progress
+                                            value={challengeProgress.percentage}
+                                            className="h-2"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+                )}
 
                 {/* Quick Actions */}
                 <section className="grid grid-cols-1 gap-4 animate-in slide-in-from-bottom-5 duration-700 delay-400">

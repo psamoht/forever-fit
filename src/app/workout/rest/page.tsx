@@ -21,6 +21,8 @@ export default function RestDayPage() {
     const [isConfirmed, setIsConfirmed] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [countdown, setCountdown] = useState(8);
+    const [activityTitle, setActivityTitle] = useState("Ruhetag");
+    const [activityType, setActivityType] = useState("rest");
 
     useEffect(() => {
         fetchUserData();
@@ -63,6 +65,22 @@ export default function RestDayPage() {
                 });
             }
 
+            // Fetch today's schedule
+            const days = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+            const todayName = days[new Date().getDay()];
+
+            const { data: schedule } = await supabase
+                .from("weekly_schedules")
+                .select("*")
+                .eq("user_id", user.id)
+                .eq("day_of_week", todayName)
+                .single();
+
+            if (schedule) {
+                setActivityTitle(schedule.activity_title || "Ruhetag");
+                setActivityType(schedule.activity_type || "rest");
+            }
+
             // Fetch actual workout count
             const { count } = await supabase
                 .from("workouts")
@@ -88,7 +106,6 @@ export default function RestDayPage() {
 
             setLoading(true);
 
-            // Logic similar to completeRestDay from Dashboard
             const { data: profile } = await supabase
                 .from('profiles')
                 .select('id, streak_current, points, last_workout_date')
@@ -99,8 +116,21 @@ export default function RestDayPage() {
                 const now = new Date();
                 const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
+                // GUARD: Prevent confirming rest day more than once per day
+                if (profile.last_workout_date) {
+                    const lastDate = new Date(profile.last_workout_date);
+                    const lastDay = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate());
+                    if (lastDay.getTime() === today.getTime()) {
+                        toast.info("Bereits für heute bestätigt!");
+                        setIsConfirmed(true);
+                        setLoading(false);
+                        return;
+                    }
+                }
+
                 let newStreak = profile.streak_current || 0;
-                let newPoints = (profile.points || 0) + 10;
+                // No points for rest/recovery days — points reward real effort
+                const newPoints = profile.points || 0;
 
                 if (profile.last_workout_date) {
                     const lastDate = new Date(profile.last_workout_date);
@@ -120,14 +150,28 @@ export default function RestDayPage() {
                     last_workout_date: now.toISOString()
                 }).eq('id', user.id);
 
-                // Add a "rest" workout entry to keep history clean (optional, but good for stats)
+                // Log a rest entry for history (0 points)
                 await supabase.from('workouts').insert({
                     user_id: user.id,
                     status: 'completed',
                     end_time: now.toISOString(),
-                    points_earned: 10,
-                    feedback_text: "Ruhetag genossen"
+                    points_earned: 0,
+                    feedback_text: activityType !== 'rest' ? `${activityTitle} abgeschlossen` : "Ruhetag genossen",
+                    theme: activityType !== 'rest' ? 'aktiv' : 'rest'
                 });
+
+                // Fire telemetry to admin dashboard silently
+                fetch('/api/track', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: user.id,
+                        type: 'workout_completed',
+                        description: activityType === 'aktiv' ? activityTitle : `Ruhetag`,
+                        metadata: { points: 10, isRestDay: true, activityType }
+                    }),
+                }).catch(() => { });
+
 
                 setStats(prev => ({
                     ...prev,
@@ -151,12 +195,7 @@ export default function RestDayPage() {
                 setIsConfirmed(true);
                 runConfetti();
 
-                toast.success("Ruhetag bestätigt! Erholung ist wichtig.");
-
-                // Auto-redirect after 3 seconds
-                setTimeout(() => {
-                    router.push('/dashboard');
-                }, 3000);
+                toast.success(activityType === 'aktiv' ? "Aktivität bestätigt! Stark gemacht." : "Ruhetag bestätigt! Erholung ist wichtig.");
             }
         } catch (error) {
             console.error("Error confirming rest day:", error);
@@ -179,7 +218,7 @@ export default function RestDayPage() {
                     <Button variant="ghost" size="icon" onClick={() => router.back()}>
                         <ArrowLeft className="h-6 w-6" />
                     </Button>
-                    <h1 className="text-xl font-bold">Ruhetag</h1>
+                    <h1 className="text-xl font-bold">{activityTitle}</h1>
                     <div className="w-10"></div>
                 </div>
 
@@ -188,7 +227,7 @@ export default function RestDayPage() {
                         <div className="h-24 w-24 bg-emerald-100 dark:bg-emerald-900/40 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-2 animate-in zoom-in duration-500">
                             <CheckCircle2 size={48} />
                         </div>
-                        <h2 className="text-3xl font-extrabold text-foreground">Erholung registriert!</h2>
+                        <h2 className="text-3xl font-extrabold text-foreground">{activityType === 'aktiv' ? 'Aktivität registriert!' : 'Erholung registriert!'}</h2>
                         <p className="text-muted-foreground text-lg">
                             Klasse, {userName}! Du hast auf deinen Körper gehört. Dein Streak läuft weiter!
                         </p>
@@ -244,7 +283,7 @@ export default function RestDayPage() {
                         {/* Coach Message */}
                         <div className="relative bg-card border border-border rounded-3xl p-8 shadow-lg text-center space-y-4">
                             <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-gradient-to-br from-emerald-400 to-teal-600 h-16 w-16 rounded-full flex items-center justify-center border-4 border-background shadow-md">
-                                <span className="text-2xl">🧘</span>
+                                <span className="text-2xl">{activityType === 'aktiv' ? '🚶' : '🧘'}</span>
                             </div>
 
                             <div className="pt-6 space-y-3">
@@ -255,7 +294,9 @@ export default function RestDayPage() {
                                     Das ist eine fantastische Leistung!"
                                 </p>
                                 <p className="text-base text-foreground font-medium">
-                                    Nimm dir heute bewusst Zeit für dich. Ein Spaziergang, Stretching oder einfach mal Nichts tun.
+                                    {activityType === 'aktiv'
+                                        ? `Viel Spaß bei deiner aktiven Erholung: ${activityTitle}. Vergiss nicht, ausreichend zu trinken!`
+                                        : 'Nimm dir heute bewusst Zeit für dich. Ein Spaziergang, Stretching oder einfach mal Nichts tun.'}
                                 </p>
                             </div>
                         </div>
@@ -290,7 +331,7 @@ export default function RestDayPage() {
                             onClick={confirmRestDay}
                             disabled={submitting}
                         >
-                            {submitting ? "Speichere..." : "Ich genieße meinen Ruhetag"}
+                            {submitting ? "Speichere..." : (activityType === 'aktiv' ? 'Aktivität abschließen' : "Ich genieße meinen Ruhetag")}
                         </Button>
 
                         <p className="text-center text-xs text-muted-foreground">

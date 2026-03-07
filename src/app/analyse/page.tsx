@@ -122,11 +122,15 @@ export default function AnalysePage() {
                         let shouldFetch = true;
 
                         // Check if the DB cache is valid (from today AND after any recent workouts)
+                        console.log("CACHE CHECK: profile.coach_summary =", !!profile.coach_summary, "profile.coach_summary_date =", profile.coach_summary_date);
                         if (profile.coach_summary && profile.coach_summary_date) {
                             const cacheDateStr = new Date(profile.coach_summary_date).toLocaleDateString('en-CA');
                             const workoutDateMatch = !profile.last_workout_date || new Date(profile.coach_summary_date) >= new Date(profile.last_workout_date);
 
+                            console.log("CACHE CHECK: todayStr =", todayStr, "cacheDateStr =", cacheDateStr, "workoutDateMatch =", workoutDateMatch);
+
                             if (cacheDateStr === todayStr && workoutDateMatch) {
+                                console.log("CACHE HIT! Using cached assessment.");
                                 setAssessment(profile.coach_summary);
                                 shouldFetch = false;
                             }
@@ -155,10 +159,16 @@ export default function AnalysePage() {
                                 setAssessment(resBody.text);
 
                                 // Save to DB cache
-                                await supabase.from('profiles').update({
+                                console.log("CACHE MISS! Saving new assessment to DB...");
+                                const { error: updateError } = await supabase.from('profiles').update({
                                     coach_summary: resBody.text,
                                     coach_summary_date: new Date().toISOString()
                                 }).eq('id', user.id);
+                                if (updateError) {
+                                    console.error("Failed to save assessment cache to DB:", updateError);
+                                } else {
+                                    console.log("Successfully saved assessment cache to DB.");
+                                }
                             } else {
                                 setAssessment("Klasse gemacht! Coach Theo bereitet deine Auswertung vor...");
                             }

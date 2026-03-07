@@ -36,11 +36,18 @@ export default function ProfilePage() {
             setGender(globalProfile.gender || "");
             setAvatarUrl(globalProfile.photo_url || null);
 
-            // Parse medical conditions. Could be a comma-separated string from earlier interactions.
+            // Parse medical conditions. Could be a JSON array string or a legacy comma-separated string.
             if (globalProfile.medical_conditions) {
-                const conditions = typeof globalProfile.medical_conditions === 'string'
-                    ? globalProfile.medical_conditions.split(',').map((c: string) => c.trim()).filter(Boolean)
-                    : [];
+                let conditions: string[] = [];
+                try {
+                    const parsed = JSON.parse(globalProfile.medical_conditions);
+                    if (Array.isArray(parsed)) conditions = parsed;
+                } catch (e) {
+                    // Fallback for old comma-separated format
+                    conditions = typeof globalProfile.medical_conditions === 'string'
+                        ? globalProfile.medical_conditions.split(',').map((c: string) => c.trim()).filter(Boolean)
+                        : [];
+                }
                 setMedicalConditions(conditions);
             }
         }
@@ -102,7 +109,7 @@ export default function ProfilePage() {
             const weightNum = parseInt(weight);
             const finalWeight = !isNaN(weightNum) ? weightNum : null;
             const finalGender = gender === "" ? null : gender;
-            const finalConditions = medicalConditions.length > 0 ? medicalConditions.join(', ') : null;
+            const finalConditions = medicalConditions.length > 0 ? JSON.stringify(medicalConditions) : null;
 
             const { error } = await supabase
                 .from("profiles")
