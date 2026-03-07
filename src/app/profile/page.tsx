@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, X, Plus } from "lucide-react";
 import { useProfile } from "@/components/profile-provider";
 
 export default function ProfilePage() {
@@ -21,6 +21,8 @@ export default function ProfilePage() {
     const [weight, setWeight] = useState("");
     const [gender, setGender] = useState("");
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+    const [medicalConditions, setMedicalConditions] = useState<string[]>([]);
+    const [newCondition, setNewCondition] = useState("");
 
     const { profile: globalProfile, refreshProfile, isLoading: isProfileLoading } = useProfile();
 
@@ -33,6 +35,14 @@ export default function ProfilePage() {
             setWeight(globalProfile.weight ? String(globalProfile.weight) : "");
             setGender(globalProfile.gender || "");
             setAvatarUrl(globalProfile.photo_url || null);
+
+            // Parse medical conditions. Could be a comma-separated string from earlier interactions.
+            if (globalProfile.medical_conditions) {
+                const conditions = typeof globalProfile.medical_conditions === 'string'
+                    ? globalProfile.medical_conditions.split(',').map((c: string) => c.trim()).filter(Boolean)
+                    : [];
+                setMedicalConditions(conditions);
+            }
         }
         setLoading(false);
     }, [globalProfile, isProfileLoading]);
@@ -92,6 +102,7 @@ export default function ProfilePage() {
             const weightNum = parseInt(weight);
             const finalWeight = !isNaN(weightNum) ? weightNum : null;
             const finalGender = gender === "" ? null : gender;
+            const finalConditions = medicalConditions.length > 0 ? medicalConditions.join(', ') : null;
 
             const { error } = await supabase
                 .from("profiles")
@@ -99,7 +110,8 @@ export default function ProfilePage() {
                     display_name: name,
                     birth_year: birthYear,
                     weight: finalWeight,
-                    gender: finalGender
+                    gender: finalGender,
+                    medical_conditions: finalConditions
                 })
                 .eq("id", user.id);
 
@@ -138,6 +150,20 @@ export default function ProfilePage() {
     const handleSignOut = async () => {
         await supabase.auth.signOut();
         router.push("/");
+    };
+
+    const handleAddCondition = (e: React.KeyboardEvent<HTMLInputElement> | React.MouseEvent<HTMLButtonElement>) => {
+        if (e.type === 'keydown' && (e as React.KeyboardEvent).key !== 'Enter') return;
+
+        const trimmed = newCondition.trim();
+        if (trimmed && !medicalConditions.includes(trimmed)) {
+            setMedicalConditions([...medicalConditions, trimmed]);
+        }
+        setNewCondition("");
+    };
+
+    const handleRemoveCondition = (conditionToRemove: string) => {
+        setMedicalConditions(medicalConditions.filter(c => c !== conditionToRemove));
     };
 
     if (loading) return <div className="p-6 text-center">Laden...</div>;
@@ -221,6 +247,59 @@ export default function ProfilePage() {
                 <Button className="w-full h-12 text-lg bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSave}>
                     Speichern
                 </Button>
+            </Card>
+
+            <Card className="p-6 space-y-4">
+                <div>
+                    <h2 className="text-xl font-bold flex items-center gap-2">
+                        Physis <span className="text-sm font-normal text-muted-foreground ml-auto">(Besonderheiten & Rücksichtnahmen)</span>
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                        Gib hier Einschränkungen, Schwachstellen oder Verletzungen ein. Coach Theo passt den Trainingsplan und seine Analysen automatisch darauf an.
+                    </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mb-2">
+                    {medicalConditions.length === 0 && (
+                        <p className="text-sm text-muted-foreground italic w-full p-2 bg-muted/30 rounded-md text-center">
+                            Noch keine Besonderheiten hinterlegt.
+                        </p>
+                    )}
+                    {medicalConditions.map((condition) => (
+                        <div key={condition} className="flex items-center gap-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 px-3 py-1.5 rounded-full text-sm font-medium animate-in zoom-in-50 duration-200">
+                            {condition}
+                            <button
+                                onClick={() => handleRemoveCondition(condition)}
+                                className="ml-1 hover:bg-emerald-200 dark:hover:bg-emerald-800 rounded-full p-0.5 transition-colors focus:outline-none"
+                                aria-label="Entfernen"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="flex gap-2">
+                    <Input
+                        value={newCondition}
+                        onChange={(e) => setNewCondition(e.target.value)}
+                        onKeyDown={handleAddCondition}
+                        placeholder="z.B. Kniearthrose, Schulterknacken..."
+                        className="flex-1"
+                    />
+                    <Button
+                        variant="secondary"
+                        onClick={handleAddCondition}
+                        disabled={!newCondition.trim()}
+                        className="px-3"
+                    >
+                        <Plus size={18} />
+                    </Button>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                    Tipp: Du kannst Coach Theo auch einfach im Chat sagen: "Ich habe Knieprobleme, merke dir das."
+                </p>
             </Card>
 
             <Button variant="outline" className="w-full h-12 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 border-red-100 dark:border-red-900/30" onClick={handleSignOut}>
