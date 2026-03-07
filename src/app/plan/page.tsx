@@ -299,8 +299,16 @@ export default function WeeklyPlanPage() {
 
                 const updates: any = {};
                 if (data.payload.goals) updates.goals = data.payload.goals;
-                if (data.payload.medical_conditions !== undefined) {
-                    updates.medical_conditions = data.payload.medical_conditions;
+                if (data.payload.medical_conditions !== undefined && data.payload.medical_conditions !== null) {
+                    let conditionsArray: string[] = [];
+                    if (Array.isArray(data.payload.medical_conditions)) {
+                        conditionsArray = data.payload.medical_conditions;
+                    } else if (typeof data.payload.medical_conditions === 'string') {
+                        conditionsArray = data.payload.medical_conditions.split(',').map((s: string) => s.trim()).filter(Boolean);
+                    }
+                    updates.medical_conditions = JSON.stringify(conditionsArray);
+                } else if (data.payload.medical_conditions === null) {
+                    updates.medical_conditions = null;
                 }
 
                 if (Object.keys(updates).length > 0) {

@@ -42,7 +42,7 @@ SOBALD DU ALLE 4 PUNKTE HAST:
   "assessment_complete": true,
   "data": {
     "goals": "...",
-    "medical_conditions": "...",
+    "medical_conditions": ["..."],
     "equipment": ["..."],
     "schedule": "..."
   }
@@ -115,7 +115,7 @@ Wenn der Nutzer sagt "ich will mehr mit Gewichten trainieren" oder "weniger Card
 {
   "update_profile": {
     "goals": "Kraftaufbau mit Hanteln, weniger Cardio",
-    "medical_conditions": null
+    "medical_conditions": ["Künstliches Kniegelenk", "Bluthochdruck"]
   }
 }
 \`\`\`
