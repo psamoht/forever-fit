@@ -180,9 +180,9 @@ export function ChatInterface({ initialMessage, onComplete, profileContext }: Ch
                         <Button
                             onClick={sendMessage}
                             disabled={isLoading || !input.trim()}
-                            className="h-12 w-12 shrink-0 rounded-xl shadow-md shadow-emerald-500/20 bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                            className="h-12 w-12 p-0 shrink-0 rounded-xl shadow-md shadow-emerald-500/20 bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                         >
-                            <ArrowRight className="h-6 w-6 text-white" />
+                            <Send className="h-5 w-5 text-white" />
                             <span className="sr-only">Senden</span>
                         </Button>
                     </div>
