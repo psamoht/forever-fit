@@ -252,7 +252,7 @@ export default function ProfilePage() {
             <Card className="p-6 space-y-4">
                 <div>
                     <h2 className="text-xl font-bold flex items-center gap-2">
-                        Physis <span className="text-sm font-normal text-muted-foreground ml-auto">(Besonderheiten & Rücksichtnahmen)</span>
+                        Physis
                     </h2>
                     <p className="text-sm text-muted-foreground mt-1">
                         Gib hier Einschränkungen, Schwachstellen oder Verletzungen ein. Coach Theo passt den Trainingsplan und seine Analysen automatisch darauf an.
