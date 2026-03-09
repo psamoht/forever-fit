@@ -83,7 +83,7 @@ export default function WorkoutPlayerPage() {
                 // SAFETY GUARD: If today is NOT a workout day, redirect immediately.
                 // This prevents exercises from being generated for rest/active_recovery/etc.
                 if (schedule && schedule.activity_type !== 'workout') {
-                    router.push('/workout/rest');
+                    router.push('/dashboard'); // Better than /workout/rest as it follows main app flow
                     return;
                 }
 
@@ -662,27 +662,32 @@ export default function WorkoutPlayerPage() {
                 refreshProfile();
 
                 // 4. Log Workout
+                // Mapping: We use existing columns since granular points/rpe_score columns are missing in DB
+                const feedbackLabels: Record<number, string> = {
+                    2: "Sehr leicht",
+                    4: "Leicht",
+                    6: "War okay",
+                    8: "Anstrengend",
+                    10: "Sehr hart"
+                };
+
                 const workoutPayload = {
-                    user_id: user.id, // Use auth user id directly
+                    user_id: user.id,
                     status: 'completed',
                     end_time: now.toISOString(),
                     points_earned: Math.round(totalPoints),
-                    upper_body_points: Math.round(upperBodyPoints),
-                    lower_body_points: Math.round(lowerBodyPoints),
-                    core_points: Math.round(corePoints),
-                    flexibility_points: Math.round(flexibilityPoints),
-                    cardio_points: Math.round(cardioPoints),
-                    rpe_score: isNaN(rpeScore) ? 5 : Math.round(rpeScore),
+                    feedback_rating: Math.round(rpeScore / 2), // Map 2-10 back to 1-5 for feedback_rating
+                    feedback_difficulty: feedbackLabels[rpeScore] || "Normal",
                     theme: workoutThemeRef.current || 'mobility'
                 };
 
-                console.log("Saving workout record with payload...", workoutPayload);
+                console.log("Saving workout record with precise payload...", workoutPayload);
                 const { data: newWorkoutData, error: workoutError } = await supabase.from('workouts').insert(workoutPayload).select('id').single();
 
                 if (workoutError) {
                     const errMsg = `Workout insert error: [${workoutError.code}] ${workoutError.message}`;
                     console.error(errMsg, workoutError);
-                    toast.error("Fehler beim Speichern - Datenbankfehler");
+                    toast.error(`Datenbankfehler: ${workoutError.message || "Unbekannter Fehler"}`);
                     throw new Error(errMsg);
                 }
                 console.log("Workout record saved successfully:", newWorkoutData?.id);
