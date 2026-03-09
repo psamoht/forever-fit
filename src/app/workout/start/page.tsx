@@ -202,7 +202,7 @@ export default function WorkoutPlayerPage() {
                 setCountdown((prev) => prev - 1);
             }, 1000);
         } else if (isFinished && countdown === 0) {
-            router.push('/');
+            router.push('/dashboard');
         }
         return () => clearInterval(timer);
     }, [isFinished, countdown, router]);
@@ -666,8 +666,13 @@ export default function WorkoutPlayerPage() {
                     user_id: user.id, // Use auth user id directly
                     status: 'completed',
                     end_time: now.toISOString(),
-                    points_earned: totalPoints,
-                    rpe_score: isNaN(rpeScore) ? 5 : rpeScore,
+                    points_earned: Math.round(totalPoints),
+                    upper_body_points: Math.round(upperBodyPoints),
+                    lower_body_points: Math.round(lowerBodyPoints),
+                    core_points: Math.round(corePoints),
+                    flexibility_points: Math.round(flexibilityPoints),
+                    cardio_points: Math.round(cardioPoints),
+                    rpe_score: isNaN(rpeScore) ? 5 : Math.round(rpeScore),
                     theme: workoutThemeRef.current || 'mobility'
                 };
 
@@ -675,9 +680,9 @@ export default function WorkoutPlayerPage() {
                 const { data: newWorkoutData, error: workoutError } = await supabase.from('workouts').insert(workoutPayload).select('id').single();
 
                 if (workoutError) {
-                    const errMsg = `Workout insert error: [${workoutError.code}] ${workoutError.message} - ${workoutError.details}`;
+                    const errMsg = `Workout insert error: [${workoutError.code}] ${workoutError.message}`;
                     console.error(errMsg, workoutError);
-                    toast.error("Fehler beim Speichern des Workouts");
+                    toast.error("Fehler beim Speichern - Datenbankfehler");
                     throw new Error(errMsg);
                 }
                 console.log("Workout record saved successfully:", newWorkoutData?.id);
@@ -732,7 +737,7 @@ export default function WorkoutPlayerPage() {
                 const { error: scheduleError } = await supabase
                     .from('weekly_schedules')
                     .update({ is_completed: true })
-                    .eq('user_id', profile.id)
+                    .eq('user_id', user.id) // Corrected from profile.id
                     .eq('day_of_week', todayNameDe);
                 if (scheduleError) console.error("Could not update schedule:", scheduleError);
 
@@ -978,7 +983,7 @@ export default function WorkoutPlayerPage() {
                     <div className="pt-10 w-full">
                         <Button
                             className="w-full h-14 text-lg bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl shadow-lg shadow-emerald-500/20 font-bold"
-                            onClick={() => router.push('/')}
+                            onClick={() => { stopAudio(); router.push('/dashboard'); }}
                         >
                             Zum Hauptmenü
                         </Button>
@@ -1013,13 +1018,6 @@ export default function WorkoutPlayerPage() {
                         )}
                     </div>
                 </div>
-
-                <Button size="lg" className="w-full max-w-xs h-16 text-xl rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 shadow-xl" onClick={() => {
-                    stopAudio();
-                    router.push("/dashboard");
-                }}>
-                    Zurück zur Übersicht
-                </Button>
             </div >
         );
     }
