@@ -948,7 +948,7 @@ export default function WorkoutPlayerPage() {
                     {/* Circular Countdown Button (matching Rest Day style) */}
                     <div className="mt-12 relative flex items-center justify-center">
                         <button
-                            onClick={() => router.push('/')}
+                            onClick={() => router.push('/dashboard')}
                             className="relative flex items-center justify-center h-20 w-20 rounded-full bg-slate-800/50 hover:bg-slate-700/50 hover:scale-105 transition-transform outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         >
                             <ChevronLeft className="h-8 w-8 text-slate-300" />
