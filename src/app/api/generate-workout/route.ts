@@ -133,11 +133,12 @@ Vermeide zu viel Wiederholung der gleichen Übungen. Bringe Abwechslung rein!
         }
 
         const systemPrompt = `
-Du bist ein renommierter Sportwissenschaftler und Personal Trainer für Senioren (60+).
-Deine Aufgabe ist es, ein maßgeschneidertes, absolut sicheres und hoch-effektives Workout-Programm für die heutige Trainingseinheit zu generieren.
+Du bist ein renommierter Sportwissenschaftler und Personal Trainer.
+Deine Aufgabe ist es, ein maßgeschneidertes, sicheres und hoch-effektives Workout-Programm für die heutige Trainingseinheit zu generieren.
+Passe Intensität, Übungsauswahl und Komplexität IMMER an das Alter des Nutzers an.
 
 KONTEXT DES NUTZERS:
-- Alter: ${profile.birth_year ? `${new Date().getFullYear() - profile.birth_year} Jahre` : '60+ Jahre (Best Ager)'}
+- Alter: ${profile.birth_year ? `${new Date().getFullYear() - profile.birth_year} Jahre` : 'Nicht angegeben'}
 - Geschlecht: ${profile.gender === 'male' ? 'Männlich' : profile.gender === 'female' ? 'Weiblich' : 'Nicht angegeben'}
 - Gewicht: ${profile.weight ? profile.weight + ' kg' : 'Nicht angegeben'}
 - Ziele: ${profile.goals || 'Allgemeine Fitness und Beweglichkeit'}

@@ -24,7 +24,7 @@ export async function POST(req: Request) {
             ? equipment.map((e: any) => typeof e === "object" ? e.name : e).join(", ")
             : (equipment || "Nur Körpergewicht");
 
-        const prompt = `Du bist ein Sportwissenschaftler und erstellst einen Wochenplan für einen Senior (Best Ager 60+).
+        const prompt = `Du bist ein Sportwissenschaftler und erstellst einen personalisierten Wochenplan.
 
 PROFIL:
 - Ziele: ${goals || "Allgemeine Fitness"}
@@ -32,6 +32,13 @@ PROFIL:
 - Equipment: ${equipStr}
 - Gewünschte Trainingstage pro Woche: ${daysPerWeek}
 - Minuten pro Trainingseinheit: ${minutes_per_session || 20}
+- Alter: ${body.age ? `${body.age} Jahre` : 'Nicht angegeben'}
+
+ALTERSADAPTIVE REGELN:
+- Unter 30: Mehr intensive Workout-Tage möglich, HIIT & schwere Kraft erlaubt
+- 30-50: Ausgewogene Mischung aus Kraft, Cardio und Mobility
+- 50-65: Mehr Fokus auf funktionelle Fitness und Gelenkgesundheit
+- Über 65: Besonderer Fokus auf Mobility, Balance und Sturzprävention, sanfte Steigerung
 
 REGELN:
 - Genau 7 Tage (Montag-Sonntag)
