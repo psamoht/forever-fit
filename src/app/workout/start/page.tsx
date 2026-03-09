@@ -591,14 +591,15 @@ export default function WorkoutPlayerPage() {
                 let cardioPoints = 0;
 
                 workoutQueue.forEach(ex => {
-                    // Try to get dynamic scoring fields directly from the database/AI-fueled Exercise object
                     const dictFallback = EXERCISE_SCORING_DICTIONARY[ex.id] || DEFAULT_SCORING;
-                    const finalMET = ex.baseMET || dictFallback.baseMET;
-                    const finalMuscleGroup = ex.muscleGroup || dictFallback.muscleGroup;
+                    const finalMET = ex.baseMET || dictFallback.baseMET || 3.0;
+                    const finalMuscleGroup = ex.muscleGroup || dictFallback.muscleGroup || 'Cardio';
 
                     const performedValue = ex.mode === 'timer' ? (ex.duration || 60) : (ex.reps || 10);
                     const scoredEx = { ...ex, baseMET: finalMET, muscleGroup: finalMuscleGroup };
-                    const pts = calculateExerciseScore(scoredEx as any, performedValue);
+                    let pts = calculateExerciseScore(scoredEx as any, performedValue);
+
+                    if (isNaN(pts)) pts = 0;
 
                     totalPoints += pts;
                     if (finalMuscleGroup === 'Upper Body') upperBodyPoints += pts;
@@ -607,6 +608,9 @@ export default function WorkoutPlayerPage() {
                     if (finalMuscleGroup === 'Flexibility/Mobility') flexibilityPoints += pts;
                     if (finalMuscleGroup === 'Cardio') cardioPoints += pts;
                 });
+
+                // Ensure totalPoints is a valid number
+                totalPoints = isNaN(totalPoints) ? 0 : totalPoints;
 
                 let newStreak = profile.streak_current || 0;
                 let newPoints = (profile.points || 0) + totalPoints;
@@ -658,20 +662,25 @@ export default function WorkoutPlayerPage() {
                 refreshProfile();
 
                 // 4. Log Workout
-                console.log("Saving workout record...", { userId: profile.id, totalPoints, rpeScore });
-                const { data: newWorkoutData, error: workoutError } = await supabase.from('workouts').insert({
-                    user_id: profile.id,
+                const workoutPayload = {
+                    user_id: user.id, // Use auth user id directly
                     status: 'completed',
                     end_time: now.toISOString(),
                     points_earned: totalPoints,
-                    rpe_score: rpeScore,
-                    theme: workoutThemeRef.current
-                }).select('id').single();
+                    rpe_score: isNaN(rpeScore) ? 5 : rpeScore,
+                    theme: workoutThemeRef.current || 'mobility'
+                };
+
+                console.log("Saving workout record with payload...", workoutPayload);
+                const { data: newWorkoutData, error: workoutError } = await supabase.from('workouts').insert(workoutPayload).select('id').single();
+
                 if (workoutError) {
-                    console.error("Workout insert error:", workoutError);
-                    throw workoutError;
+                    const errMsg = `Workout insert error: [${workoutError.code}] ${workoutError.message} - ${workoutError.details}`;
+                    console.error(errMsg, workoutError);
+                    toast.error("Fehler beim Speichern des Workouts");
+                    throw new Error(errMsg);
                 }
-                console.log("Workout record saved:", newWorkoutData?.id);
+                console.log("Workout record saved successfully:", newWorkoutData?.id);
 
                 const actualDurationSeconds = Math.round((now.getTime() - startTimeRef.current.getTime()) / 1000);
 
@@ -692,21 +701,27 @@ export default function WorkoutPlayerPage() {
                 // 4b. Log individual workout exercises
                 if (newWorkoutData && newWorkoutData.id) {
                     console.log(`Saving ${workoutQueue.length} individual exercises...`);
-                    const exerciseInserts = workoutQueue.map((ex, index) => ({
-                        workout_id: newWorkoutData.id,
-                        exercise_id: ex.id,
-                        status: 'completed',
-                        duration_seconds: ex.mode === 'timer' ? (ex.duration || 60) : (ex.reps || 10), // Approx
-                        variant_used: variantsUsedRef.current[index] || 'standard',
-                        actual_reps: ex.mode === 'reps' ? (ex.reps || 10) : null,
-                        actual_sets: ex.sets || 1
-                    }));
+                    const exerciseInserts = workoutQueue
+                        .filter(ex => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ex.id)) // Only valid UUIDs
+                        .map((ex, index) => ({
+                            workout_id: newWorkoutData.id,
+                            exercise_id: ex.id,
+                            status: 'completed',
+                            duration_seconds: ex.mode === 'timer' ? (ex.duration || 60) : (ex.reps || 10), // Approx
+                            variant_used: variantsUsedRef.current[index] || 'standard',
+                            actual_reps: ex.mode === 'reps' ? (ex.reps || 10) : null,
+                            actual_sets: ex.sets || 1
+                        }));
 
-                    const { error: exercisesError } = await supabase.from('workout_exercises').insert(exerciseInserts);
-                    if (exercisesError) {
-                        console.error("Could not save individual exercises error:", exercisesError);
+                    if (exerciseInserts.length > 0) {
+                        const { error: exercisesError } = await supabase.from('workout_exercises').insert(exerciseInserts);
+                        if (exercisesError) {
+                            console.error("Could not save individual exercises error:", exercisesError);
+                        } else {
+                            console.log(`Saved ${exerciseInserts.length} individual exercises successfully.`);
+                        }
                     } else {
-                        console.log("Individual exercises saved successfully.");
+                        console.warn("No exercises with valid IDs to log in workout_exercises.");
                     }
                 }
 
