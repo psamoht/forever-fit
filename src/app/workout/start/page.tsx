@@ -4,6 +4,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Play, Pause, SkipForward, CheckCircle2, ChevronLeft, Shuffle, Volume2, Sparkles } from "lucide-react";
 import { MOCK_WORKOUT, ALTERNATIVE_EXERCISES, Exercise } from "@/lib/workout-data";
@@ -36,6 +37,7 @@ export default function WorkoutPlayerPage() {
     const [isAudioEnabled, setIsAudioEnabled] = useState(true);
     const [earnedPoints, setEarnedPoints] = useState<number | null>(null);
     const [levelUpInfo, setLevelUpInfo] = useState<LevelInfo | null>(null);
+    const [countdown, setCountdown] = useState(8); // For auto-redirect after completion
 
     // --- Audio Pre-buffering States ---
     const [prefetchedAudio, setPrefetchedAudio] = useState<Record<number, string>>({});
@@ -191,6 +193,19 @@ export default function WorkoutPlayerPage() {
             setLoading(false);
         }
     };
+
+    // Auto-redirect logic after completion
+    useEffect(() => {
+        let timer: NodeJS.Timeout;
+        if (isFinished && countdown > 0) {
+            timer = setInterval(() => {
+                setCountdown((prev) => prev - 1);
+            }, 1000);
+        } else if (isFinished && countdown === 0) {
+            router.push('/');
+        }
+        return () => clearInterval(timer);
+    }, [isFinished, countdown, router]);
 
     // Timer Logic - Updates when index changes
     useEffect(() => {
@@ -898,13 +913,76 @@ export default function WorkoutPlayerPage() {
                             </div>
                         </div>
                     )}
+                    {/* Points & Stats Grid */}
+                    <div className="grid grid-cols-2 gap-4 w-full mt-6">
+                        <Card className="p-4 flex flex-col items-center justify-center bg-slate-800/50 border-slate-700">
+                            <span className="text-3xl font-bold text-emerald-400">{earnedPoints || 0}</span>
+                            <span className="text-xs text-slate-400 uppercase font-bold tracking-wider">Punkte</span>
+                        </Card>
+                        <Card className="p-4 flex flex-col items-center justify-center bg-slate-800/50 border-slate-700">
+                            <span className="text-3xl font-bold text-emerald-400">{workoutQueue.length}</span>
+                            <span className="text-xs text-slate-400 uppercase font-bold tracking-wider">Übungen</span>
+                        </Card>
+                    </div>
 
-                    <div className="bg-slate-800/80 border border-slate-700 p-6 rounded-2xl max-w-md mx-auto shadow-xl backdrop-blur-sm">
+                    {/* Circular Countdown Button (matching Rest Day style) */}
+                    <div className="mt-12 relative flex items-center justify-center">
+                        <button
+                            onClick={() => router.push('/')}
+                            className="relative flex items-center justify-center h-20 w-20 rounded-full bg-slate-800/50 hover:bg-slate-700/50 hover:scale-105 transition-transform outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        >
+                            <ChevronLeft className="h-8 w-8 text-slate-300" />
+
+                            {/* SVG Ring */}
+                            <svg
+                                height="84"
+                                width="84"
+                                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 pointer-events-none"
+                            >
+                                <circle
+                                    stroke="currentColor"
+                                    fill="transparent"
+                                    strokeWidth="4"
+                                    strokeDasharray="238 238"
+                                    style={{
+                                        strokeDashoffset: 238 - (countdown / 8) * 238,
+                                        transition: 'stroke-dashoffset 1s linear'
+                                    }}
+                                    r="38"
+                                    cx="42"
+                                    cy="42"
+                                    className="text-emerald-500"
+                                />
+                            </svg>
+                        </button>
+                        <p className="absolute -bottom-10 text-xs text-slate-400 font-medium w-full text-center">
+                            Automatisch weiter in {countdown}s
+                        </p>
+                    </div>
+
+                    <div className="pt-10 w-full">
+                        <Button
+                            className="w-full h-14 text-lg bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl shadow-lg shadow-emerald-500/20 font-bold"
+                            onClick={() => router.push('/')}
+                        >
+                            Zum Hauptmenü
+                        </Button>
+                    </div>
+
+                    {/* Summary Card */}
+                    <div className="bg-slate-800/80 border border-slate-700 p-6 rounded-2xl max-w-md mx-auto shadow-xl backdrop-blur-sm mt-8">
                         {summaryLoading ? (
                             <p className="text-slate-400 animate-pulse">Coach Theo analysiert dein Training...</p>
                         ) : summaryText ? (
                             <div className="space-y-4">
-                                <div className="flex justify-center mb-2">
+                                <div className="flex items-center gap-2 text-emerald-400 mb-2">
+                                    <Volume2 size={20} />
+                                    <span className="font-bold text-sm uppercase tracking-wider">Coach Theo sagt:</span>
+                                </div>
+                                <p className="text-slate-200 text-sm leading-relaxed italic text-left">
+                                    "{summaryText}"
+                                </p>
+                                <div className="flex justify-center mt-4">
                                     <Button
                                         variant="outline"
                                         size="icon"
@@ -914,7 +992,6 @@ export default function WorkoutPlayerPage() {
                                         <Volume2 size={24} />
                                     </Button>
                                 </div>
-                                <p className="text-lg text-slate-200 leading-relaxed font-medium italic">"{summaryText}"</p>
                             </div>
                         ) : (
                             <p className="text-slate-300">Du hast das Training erfolgreich beendet. Sei stolz auf dich!</p>
@@ -928,7 +1005,7 @@ export default function WorkoutPlayerPage() {
                 }}>
                     Zurück zur Übersicht
                 </Button>
-            </div>
+            </div >
         );
     }
 
