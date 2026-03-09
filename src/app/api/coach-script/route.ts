@@ -15,21 +15,27 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { exerciseName, exerciseDescription, isNext, userName, isFirst, isLast, sets, reps, duration, mode, muscleGroup } = body;
+        const { exerciseName, exerciseDescription, isNext, userName, isFirst, isLast, sets, reps, duration, mode, muscleGroup, isVariant, baseExerciseName } = body;
 
         // 1. Generate text script
         const textModel = genAI.getGenerativeModel({
             model: "gemini-2.5-flash",
-            systemInstruction: `Du bist "Coach Theo", ein motivierender und herzlicher Fitness-Coach für Senioren. Deine Stimme ist männlich, beruhigend, aber bestimmt.
-Dein Ziel ist es, in 2-4 kurzen, flüssig gesprochenen Sätzen die aktuelle Übung anzusagen, den Nutzer zu motivieren und KURZ zu erklären, WIE die Übung ausgeführt wird. 
+            systemInstruction: `Du bist "Coach Theo", ein motivierender und herzlicher Fitness-Coach. Deine Stimme ist männlich, beruhigend, aber bestimmt.
 Der Nutzer soll nicht auf den Bildschirm schauen müssen. Erkläre die wichtigste Bewegung ("Stell dich schulterbreit hin und beuge...").
-Spreche den Nutzer immer mit "Du" an. Formuliere sehr natürlich, wie ein echter Trainer der neben dem Nutzer steht.
+Spreche den Nutzer IMMER persönlich mit seinem Namen an, wenn du ihn begrüßt. Verwende NIEMALS generische Phrasen wie "Meine Lieben", "Team" oder "Leute".
 Verwende keine Emojis, Sterne (*) oder Markdown in deiner Antwort. Lies nicht stur die Beschreibung ab, sondern sag anfeuernd, was und wie viel zu tun ist.`,
         });
 
         let prompt = `Aktuelle Übung: "${exerciseName}".\n`;
-        prompt += `Beschreibung der Ausführung: "${exerciseDescription}". (Fasse dies in 1-2 Sätzen natürlich zusammen, damit der Nutzer weiß, was er tun soll, ohne auf den Bildschirm zu schauen).\n`;
-        if (muscleGroup) {
+
+        if (isVariant) {
+            prompt += `Kontext: Das ist eine abgewandelte Variante der vorherigen Übung "${baseExerciseName}". Erkläre NICHT nochmal die ganze Übung, sondern sage NUR kurz, was sich jetzt ändert oder worauf man speziell achten muss ("Wir machen es jetzt etwas schwerer, indem du...").\n`;
+            prompt += `Beschreibung der Änderung: "${exerciseDescription}".\n`;
+        } else {
+            prompt += `Beschreibung der Ausführung: "${exerciseDescription}". (Fasse dies in 1-2 Sätzen natürlich zusammen, damit der Nutzer weiß, was er tun soll, ohne auf den Bildschirm zu schauen).\n`;
+        }
+
+        if (muscleGroup && !isVariant) {
             prompt += `Fokus/Muskelgruppe: "${muscleGroup}". (Erwähne den Fokus gerne natürlich im Satz, z.B. "jetzt stärken wir...").\n`;
         }
 
@@ -40,6 +46,8 @@ Verwende keine Emojis, Sterne (*) oder Markdown in deiner Antwort. Lies nicht st
         }
 
         prompt += `WICHTIGE LOGIK-REGEL: Wenn die Übung zwei Seiten oder Richtungen hat (z.B. linkes/rechtes Bein, im Uhrzeigersinn/Gegenuhrzeigersinn) UND ${sets} Sätze angegeben sind, bedeutet das: Jeder Satz steht für EINE Seite/Richtung. Vermeide es so zu klingen, als müsste man pro Seite ${sets} Sätze machen. Sag stattdessen z.B.: "Wir machen ${sets} Sätze, also einen pro Seite/Richtung, mit jeweils ${reps || duration} ${mode === 'timer' ? 'Sekunden' : 'Wiederholungen'}."\n`;
+
+        prompt += `WICHTIGE NAMENS-REGEL: Der Nutzer heißt "${userName || "Sportler"}". Sprich ihn persönlich mit Vornamen an ("Sehr gut, ${userName}!" oder "Weiter so, ${userName}!"). Erfinde KEINE Floskeln wie "Meine Lieben", "Team" oder "Leute"!\n`;
 
         if (isFirst) {
             if (userName && userName.toLowerCase() !== "du" && userName.toLowerCase() !== "sportler") {

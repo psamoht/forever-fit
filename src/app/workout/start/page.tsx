@@ -395,7 +395,9 @@ export default function WorkoutPlayerPage() {
                     reps: currentExercise.reps || null,
                     duration: currentExercise.duration || null,
                     mode: currentExercise.mode || 'reps',
-                    muscleGroup: currentExercise.muscleGroup || null
+                    muscleGroup: currentExercise.muscleGroup || null,
+                    isVariant: !!variantsUsedRef.current[currentIndex],
+                    baseExerciseName: "der Ursprungsübung"
                 })
             });
 
