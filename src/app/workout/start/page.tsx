@@ -627,17 +627,23 @@ export default function WorkoutPlayerPage() {
                 }
 
                 // 3. Update Profile
+                console.log("Saving profile update...", { newStreak, newPoints });
                 const { error: profileError } = await supabase.from('profiles').update({
                     streak_current: newStreak,
                     points: newPoints,
                     last_workout_date: now.toISOString()
                 }).eq('id', user.id);
-                if (profileError) throw profileError;
+                if (profileError) {
+                    console.error("Profile update error:", profileError);
+                    throw profileError;
+                }
+                console.log("Profile update successful.");
 
                 // Refresh global profile so changes reflect immediately everywhere
                 refreshProfile();
 
                 // 4. Log Workout
+                console.log("Saving workout record...", { userId: profile.id, totalPoints, rpeScore });
                 const { data: newWorkoutData, error: workoutError } = await supabase.from('workouts').insert({
                     user_id: profile.id,
                     status: 'completed',
@@ -646,12 +652,16 @@ export default function WorkoutPlayerPage() {
                     rpe_score: rpeScore,
                     theme: workoutThemeRef.current
                 }).select('id').single();
-
-                if (workoutError) throw workoutError;
+                if (workoutError) {
+                    console.error("Workout insert error:", workoutError);
+                    throw workoutError;
+                }
+                console.log("Workout record saved:", newWorkoutData?.id);
 
                 const actualDurationSeconds = Math.round((now.getTime() - startTimeRef.current.getTime()) / 1000);
 
                 // Fire telemetry to admin dashboard silently
+                console.log("Sending telemetry data...");
                 fetch('/api/track', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -666,11 +676,11 @@ export default function WorkoutPlayerPage() {
 
                 // 4b. Log individual workout exercises
                 if (newWorkoutData && newWorkoutData.id) {
+                    console.log(`Saving ${workoutQueue.length} individual exercises...`);
                     const exerciseInserts = workoutQueue.map((ex, index) => ({
                         workout_id: newWorkoutData.id,
                         exercise_id: ex.id,
                         status: 'completed',
-                        order_index: index,
                         duration_seconds: ex.mode === 'timer' ? (ex.duration || 60) : (ex.reps || 10), // Approx
                         variant_used: variantsUsedRef.current[index] || 'standard',
                         actual_reps: ex.mode === 'reps' ? (ex.reps || 10) : null,
@@ -678,7 +688,11 @@ export default function WorkoutPlayerPage() {
                     }));
 
                     const { error: exercisesError } = await supabase.from('workout_exercises').insert(exerciseInserts);
-                    if (exercisesError) console.error("Could not save individual exercises:", exercisesError);
+                    if (exercisesError) {
+                        console.error("Could not save individual exercises error:", exercisesError);
+                    } else {
+                        console.log("Individual exercises saved successfully.");
+                    }
                 }
 
                 // Update Weekly Schedule as completed for today

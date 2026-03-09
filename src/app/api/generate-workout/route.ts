@@ -155,7 +155,10 @@ Deine komplette Antwort MUSS ein gültiges JSON-Array sein, das genau 1:1 dem fo
 interface Exercise {
     id: string; // Wird vom Backend überschrieben, setze hier vorerst "gen-X"
     name: string;
-    sets: number; // Kraftübungen: 2-3 Sätze. WICHTIG: Isometrische Übungen (Plank, Wandsitz), Dehnen (Stretching) oder durchgehende Bewegungen (Gehen) haben IMMER GENAU 1 SATZ!
+    sets: number; // REGELN FÜR SÄTZE: 
+                  // 1. Kraftübungen: 2-3 Sätze.
+                  // 2. BEIDSEITIGE ÜBUNGEN (z.B. Dehnen links/rechts, Rotation im/gegen Uhrzeigersinn): IMMER GENAU 2 SÄTZE (einer pro Seite).
+                  // 3. ISOMETRISCHE ÜBUNGEN (Plank, Wandsitz) oder DURCHGEHENDE BEWEGUNGEN (Gehen): IMMER GENAU 1 SATZ.
     duration?: number; // Sekunden, falls mode='timer'
     reps?: number;     // Anzahl, falls mode='reps'
     mode: 'timer' | 'reps';
