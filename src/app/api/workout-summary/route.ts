@@ -81,7 +81,7 @@ Verwende keine Sternchen (*) oder auffälliges Markdown in deiner Antwort.`,
 
         // 2. Generate Audio from the text
         const audioModel = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash-preview-tts"
+            model: "gemini-1.5-flash"
         });
 
         const audioResponse = await audioModel.generateContent({

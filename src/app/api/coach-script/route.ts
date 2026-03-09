@@ -69,7 +69,7 @@ Verwende keine Emojis, Sterne (*) oder Markdown in deiner Antwort. Lies nicht st
 
         // 2. Synthesize audio
         const audioModel = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash-preview-tts"
+            model: "gemini-1.5-flash"
         });
 
         const audioResponse = await audioModel.generateContent({
