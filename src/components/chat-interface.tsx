@@ -5,8 +5,9 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card } from "./ui/card";
 import { cn } from "@/lib/utils";
-import { Send, User, Bot, Sparkles, ArrowRight } from "lucide-react";
+import { Sparkles, Send, User } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { safeFetch } from "@/lib/safe-fetch";
 
 interface Message {
     role: "user" | "model";
@@ -56,7 +57,7 @@ export function ChatInterface({ initialMessage, onComplete, profileContext }: Ch
         setIsLoading(true);
 
         try {
-            const response = await fetch("/api/chat", {
+            const response = await safeFetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

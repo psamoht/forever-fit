@@ -17,6 +17,7 @@ import { useProfile } from "@/components/profile-provider";
 import { calculateExerciseScore, EXERCISE_SCORING_DICTIONARY, DEFAULT_SCORING, MuscleGroup } from "@/lib/scoring-system";
 import { computeUpdatedTrainingState, TrainingState } from "@/lib/training-state";
 import { checkLevelUp, getLevelFromPoints, getStreakMilestone, LevelInfo } from "@/lib/level-system";
+import { safeFetch } from "@/lib/safe-fetch";
 
 export default function WorkoutPlayerPage() {
     const router = useRouter();
@@ -116,7 +117,7 @@ export default function WorkoutPlayerPage() {
             let baseExercises: Exercise[] = [];
 
             try {
-                const res = await fetch('/api/generate-workout', {
+                const res = await safeFetch('/api/generate-workout', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -293,7 +294,7 @@ export default function WorkoutPlayerPage() {
 
         try {
             console.log(`Pre-fetching audio for index ${index}...`);
-            const res = await fetch("/api/coach-script", {
+            const res = await safeFetch("/api/coach-script", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -327,7 +328,7 @@ export default function WorkoutPlayerPage() {
 
         try {
             console.log(`Pre-fetching image for index ${index}...`);
-            const res = await fetch('/api/generate-media', {
+            const res = await safeFetch('/api/generate-media', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -360,7 +361,7 @@ export default function WorkoutPlayerPage() {
             // We don't have true points yet, but we can estimate base points or just pass 0 for the TTS prompt to ignore.
             const estimatedPoints = exercises.length * 15;
 
-            const res = await fetch("/api/workout-summary", {
+            const res = await safeFetch("/api/workout-summary", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -396,7 +397,7 @@ export default function WorkoutPlayerPage() {
         try {
             setIsSpeaking(true); // Start loading state visually
             console.log(`Live-fetching audio for index ${currentIndex}...`);
-            const res = await fetch("/api/coach-script", {
+            const res = await safeFetch("/api/coach-script", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -449,7 +450,7 @@ export default function WorkoutPlayerPage() {
         if (generatingImage || !currentExercise) return;
         setGeneratingImage(true);
         try {
-            const res = await fetch('/api/generate-media', {
+            const res = await safeFetch('/api/generate-media', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -696,7 +697,7 @@ export default function WorkoutPlayerPage() {
 
                 // Fire telemetry to admin dashboard silently
                 console.log("Sending telemetry data...");
-                fetch('/api/track', {
+                safeFetch('/api/track', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -861,7 +862,7 @@ export default function WorkoutPlayerPage() {
             // Simplified stats for prompt
             const stats = completedExercises.map(ex => `${ex.name} (${ex.mode === 'reps' ? ex.reps + ' Wdh.' : ex.duration + ' Sek.'})`).join(", ");
 
-            const res = await fetch("/api/workout-summary", {
+            const res = await safeFetch("/api/workout-summary", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
