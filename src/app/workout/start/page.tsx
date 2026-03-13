@@ -440,7 +440,7 @@ export default function WorkoutPlayerPage() {
 
     // Auto-generate missing image if URL is completely empty
     useEffect(() => {
-        if (currentExercise && !currentExercise.videoUrl && !currentImageUrl && !generatingImage) {
+        if (currentExercise && !currentExercise.videoUrl && currentImageUrl !== 'failed' && !currentImageUrl && !generatingImage) {
             handleImageError();
         }
     }, [currentExercise, currentImageUrl, generatingImage]);
@@ -469,11 +469,11 @@ export default function WorkoutPlayerPage() {
             } else {
                 console.error("API returned failure:", data);
                 // Set fallback or clear so it doesn't spin forever without trying again
-                setCurrentImageUrl(null);
+                setCurrentImageUrl('failed');
             }
         } catch (e) {
             console.error("Failed to generate image:", e);
-            setCurrentImageUrl(null);
+            setCurrentImageUrl('failed');
         } finally {
             setGeneratingImage(false);
         }

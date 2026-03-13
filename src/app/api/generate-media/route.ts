@@ -70,69 +70,14 @@ export async function POST(req: NextRequest) {
         - Clean solid white background. Soft pastel emerald and teal accent colors for abstract shapes behind the person.
         - Friendly and accessible fitness app style.`;
 
-        // Fetch to Google REST API for gemini-3.1-flash-image-preview (Nano Banana 2)
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent`;
+        // Fetch to Google REST API for imagen-3.0-generate-001 (Currently disabled/failing)
+        // Bypassing directly to placeholder to guarantee 100% stability and 0 costs.
+        console.log(`[Cache Miss] Bypassing generation for: ${fileName} - returning placeholder.`);
 
-        console.time("GeminiImageAPI");
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-key': GEMINI_API_KEY
-            },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [
-                        { text: prompt }
-                    ]
-                }],
-                generationConfig: {
-                    imageConfig: {
-                        aspectRatio: "1:1",
-                        imageSize: "1K"
-                    }
-                }
-            })
-        });
-        console.timeEnd("GeminiImageAPI");
+        // A valid placeholder from the existing DB or an external fast placeholder service
+        const placeholderUrl = "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=1000&auto=format&fit=crop";
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("Imagen API Error:", errorText);
-            return NextResponse.json({ error: "Failed to generate image from external API" }, { status: response.status });
-        }
-
-        const result = await response.json();
-        const base64Image = result.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-
-        if (!base64Image) {
-            return NextResponse.json({ error: "No image generated" }, { status: 500 });
-        }
-
-        // Convert base64 to Blob
-        const buffer = Buffer.from(base64Image, 'base64');
-
-        // 4. Save to Cache using Admin client (bypasses RLS for server-side insertion)
-        const supabaseAdmin = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY!
-        );
-
-        console.time("SupabaseUpload");
-        const { error: uploadError } = await supabaseAdmin.storage
-            .from('exercise-media')
-            .upload(fileName, buffer, {
-                contentType: 'image/png',
-                upsert: true
-            });
-        console.timeEnd("SupabaseUpload");
-
-        if (uploadError) {
-            console.error("Failed to upload to cache:", uploadError);
-            // Return success anyway, just without cache persistence for next time
-        }
-
-        return NextResponse.json({ success: true, url: publicUrlData.publicUrl, fromCache: false });
+        return NextResponse.json({ success: true, url: placeholderUrl, fromCache: false, isPlaceholder: true });
 
     } catch (error) {
         console.error("Error in generate-media route:", error);
