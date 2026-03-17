@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { encodeWAV } from "@/lib/audio-utils";
+import { logApiUsage } from "@/lib/admin-logger";
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
@@ -15,7 +16,9 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { userName, currentWorkoutStats, previousWorkoutStats, rpeScore, totalPoints, gamification, profileContext } = body;
+        const { userName, currentWorkoutStats, previousWorkoutStats, rpeScore, totalPoints, gamification, profileContext, userId } = body;
+
+        const finalUserId = userId || profileContext?.id || null;
 
         // 1. Generate the text summary
         const textModel = genAI.getGenerativeModel({
@@ -77,6 +80,9 @@ Verwende keine Sternchen (*) oder auffälliges Markdown in deiner Antwort.`,
             contents: [{ role: 'user', parts: [{ text: prompt }] }]
         });
 
+        const textInputTokens = textResponse.response.usageMetadata?.promptTokenCount || 0;
+        const textOutputTokens = textResponse.response.usageMetadata?.candidatesTokenCount || 0;
+
         let text = textResponse.response.text().replace(/[*#_]/g, "").trim();
 
         // 2. Generate Audio from the text
@@ -111,6 +117,16 @@ Verwende keine Sternchen (*) oder auffälliges Markdown in deiner Antwort.`,
                     base64Audio = wavBuf.toString("base64");
                 }
             }
+        }
+
+        const audioInputTokens = audioResponse.response.usageMetadata?.promptTokenCount || 0;
+        const audioOutputTokens = audioResponse.response.usageMetadata?.candidatesTokenCount || 0;
+
+        if (finalUserId) {
+            Promise.all([
+                logApiUsage(finalUserId, 'workout-summary-text', textInputTokens, textOutputTokens, 'gemini-2.5-flash', prompt, text),
+                logApiUsage(finalUserId, 'workout-summary-audio', audioInputTokens, audioOutputTokens, 'gemini-1.5-flash', text, 'AUDIO_RESPONSE')
+            ]).catch(console.error);
         }
 
         return NextResponse.json({ success: true, text, audio: base64Audio });

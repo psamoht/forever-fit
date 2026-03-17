@@ -1,9 +1,20 @@
-import { COACH_SYSTEM_PROMPT, model } from "@/lib/gemini";
+import { COACH_SYSTEM_PROMPT, model as defaultModel } from "@/lib/gemini";
 import { NextResponse } from "next/server";
-import { logApiUsage, logUserActivity } from "@/lib/admin-logger";
+import { logApiUsage, logUserActivity, isBudgetExceeded } from "@/lib/admin-logger";
+import { getOrCreateContextCache } from "@/lib/gemini-cache";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export async function POST(req: Request) {
     try {
+        // 0. Safety Switch Check
+        if (await isBudgetExceeded()) {
+            return NextResponse.json({
+                error: "Monatliches KI-Budget erreicht. Bitte wende dich an den Administrator.",
+                isBudgetExceeded: true
+            }, { status: 403 });
+        }
         const { message, history, profileContext } = await req.json();
 
         // Build context-aware prompt with user's current state
@@ -42,40 +53,73 @@ ${p.currentSchedule.map((s: any) => `  ${s.day_of_week}: ${s.activity_title || s
             });
         }
 
-        const chat = model.startChat({
-            history: formattedHistory,
-            generationConfig: {
-                maxOutputTokens: 1000,
-            },
-            systemInstruction: {
-                role: "system",
-                parts: [{ text: fullSystemPrompt }]
-            }
-        });
-
-        const result = await chat.sendMessage(message);
-        const response = result.response;
-        const text = response.text();
-
-        const inputTokens = response.usageMetadata?.promptTokenCount || 0;
-        const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
         const userId = profileContext?.id || null;
+        let responseText = "";
+        let inputTokens = 0;
+        let outputTokens = 0;
+        let usedCache = false;
+
+        // Calculate exact tokens to determine if we can use Context Caching (min 4096)
+        const countPayload = {
+            contents: [
+                { role: "user", parts: [{ text: fullSystemPrompt }] },
+                ...formattedHistory
+            ]
+        };
+        const tokenCheckResponse = await defaultModel.countTokens(countPayload);
+        const totalTokens = tokenCheckResponse.totalTokens;
+
+        if (totalTokens >= 4096 && userId) {
+            // Context is large enough for Gemini Caching
+            const cacheObj = await getOrCreateContextCache(userId, fullSystemPrompt, formattedHistory);
+            if (cacheObj) {
+                usedCache = true;
+                const cachedModel = genAI.getGenerativeModel({
+                    model: "gemini-2.0-flash",
+                    cachedContent: cacheObj as any
+                });
+
+                // When using a cache that already contains the system prompt and history,
+                // we only need to pass the new message
+                const result = await cachedModel.generateContent(message);
+                responseText = result.response.text();
+                inputTokens = result.response.usageMetadata?.promptTokenCount || 0;
+                outputTokens = result.response.usageMetadata?.candidatesTokenCount || 0;
+            }
+        }
+
+        // Fallback or if tokens < 4096 (very cheap anyway)
+        if (!usedCache) {
+            const chat = defaultModel.startChat({
+                history: formattedHistory,
+                generationConfig: { maxOutputTokens: 1000 },
+                systemInstruction: {
+                    role: "system",
+                    parts: [{ text: fullSystemPrompt }]
+                }
+            });
+
+            const result = await chat.sendMessage(message);
+            responseText = result.response.text();
+            inputTokens = result.response.usageMetadata?.promptTokenCount || 0;
+            outputTokens = result.response.usageMetadata?.candidatesTokenCount || 0;
+        }
 
         Promise.all([
-            logApiUsage(userId, 'chat', inputTokens, outputTokens),
-            logUserActivity(userId, 'chat_interaction', 'Interacted with Coach Theo in Chat', { messageLength: message?.length || 0 })
+            logApiUsage(userId, usedCache ? 'chat (cached)' : 'chat', inputTokens, outputTokens, 'gemini-2.0-flash', fullSystemPrompt + "\n\nUser: " + message, responseText, 'coach-theo-chat'),
+            logUserActivity(userId, 'chat_interaction', 'Interacted with Coach Theo in Chat', { messageLength: message?.length || 0, tokens: totalTokens, cached: usedCache })
         ]).catch(e => console.error("Admin Logging Error:", e));
 
         // Parse all JSON action blocks from the response
         let assessmentComplete = false;
         let profileData = null;
-        let cleanText = text;
+        let cleanText = responseText;
         const actions: any[] = [];
 
         // Find ALL json blocks in the response
         const jsonRegex = /```json\n([\s\S]*?)\n```/g;
         let match;
-        while ((match = jsonRegex.exec(text)) !== null) {
+        while ((match = jsonRegex.exec(responseText)) !== null) {
             try {
                 const data = JSON.parse(match[1]);
 

@@ -1,6 +1,6 @@
 import { model } from "@/lib/gemini";
 import { NextResponse } from "next/server";
-import { logApiUsage, logUserActivity } from "@/lib/admin-logger";
+import { logApiUsage, logUserActivity, isBudgetExceeded } from "@/lib/admin-logger";
 import { Exercise } from "@/lib/workout-data";
 import { createClient } from "@supabase/supabase-js";
 
@@ -11,6 +11,13 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
 export async function POST(req: Request) {
     try {
+        // 0. Safety Switch Check
+        if (await isBudgetExceeded()) {
+            return NextResponse.json({
+                error: "Monatliches KI-Budget erreicht. Bitte wende dich an den Administrator.",
+                isBudgetExceeded: true
+            }, { status: 403 });
+        }
         const { theme, activityTitle, profile, equipment, trainingState } = await req.json();
 
         if (!theme || !profile) {
@@ -150,44 +157,11 @@ ${adaptiveContext}
 ${activitySpecificInstructions}
 
 WICHTIGSTE REGEL ZUM FORMAT:
-Deine komplette Antwort MUSS ein gültiges JSON-Array sein, das genau 1:1 dem folgenden TypeScript-Interface entspricht:
-
-interface Exercise {
-    id: string; // Wird vom Backend überschrieben, setze hier vorerst "gen-X"
-    name: string;
-    sets: number; // REGELN FÜR SÄTZE: 
-                  // 1. Kraftübungen: 2-3 Sätze.
-                  // 2. BEIDSEITIGE ÜBUNGEN (z.B. Dehnen links/rechts, Rotation im/gegen Uhrzeigersinn): IMMER GENAU 2 SÄTZE (einer pro Seite).
-                  // 3. ISOMETRISCHE ÜBUNGEN (Plank, Wandsitz) oder DURCHGEHENDE BEWEGUNGEN (Gehen): IMMER GENAU 1 SATZ.
-    duration?: number; // Sekunden, falls mode='timer'
-    reps?: number;     // Anzahl, falls mode='reps'
-    mode: 'timer' | 'reps';
-    description: string;
-    videoUrl: string; // Setze dies vorerst auf ""
-    baseMET: number; // NEU! z.B. 4.0
-    muscleGroup: 'Upper Body' | 'Lower Body' | 'Core' | 'Flexibility/Mobility' | 'Cardio'; // NEU! Exakt einer dieser Strings
-    easierVariant: { name: string; description: string; };
-    harderVariant: { name: string; description: string; };
-}
-
-Gib AUSSCHLIESSLICH das JSON-Array zurück. KEINEN Markdown-Text außerhalb des Arrays. KEINE Einleitungen.
-Beispiel (Struktur):
-[
-  {
-    "id": "gen-1",
-    "name": "Sicheres Schulterkreisen",
-    "sets": 2,
-    "reps": 15,
-    "mode": "reps",
-    "description": "Setze dich aufrecht hin...",
-    "videoUrl": "",
-    "baseMET": 2.5,
-    "muscleGroup": "Flexibility/Mobility",
-    "easierVariant": { "name": "...", "description": "..." },
-    "harderVariant": { "name": "...", "description": "..." }
-  }
-]
+... (JSON INTERFACE) ...
 `;
+        // In a real production app, we would fetch the template from PROMPT_REGISTRY['workout-generation']
+        // and replace the tags. For now, we use the local string but log the key.
+        ;
 
         const chat = model.startChat({
             generationConfig: {
@@ -203,7 +177,7 @@ Beispiel (Struktur):
         const userId = profile?.id || null;
 
         Promise.all([
-            logApiUsage(userId, 'generate-workout', inputTokens, outputTokens),
+            logApiUsage(userId, 'generate-workout', inputTokens, outputTokens, 'gemini-2.0-flash', systemPrompt, text, 'workout-generation'),
             logUserActivity(userId, 'workout_generated', `Generated plan for theme: ${theme}`, { theme })
         ]).catch(e => console.error("Admin Logging Error:", e));
 

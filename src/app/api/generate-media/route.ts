@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { createClient } from "@supabase/supabase-js";
+import { logApiUsage } from "@/lib/admin-logger";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -10,7 +11,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const { exerciseId, exerciseName, description, gender, age } = await req.json();
+        const { userId, exerciseId, exerciseName, description, gender, age } = await req.json();
 
         if (!exerciseId || !exerciseName) {
             return NextResponse.json({ error: "Missing exerciseId or exerciseName" }, { status: 400 });
@@ -76,6 +77,8 @@ export async function POST(req: NextRequest) {
 
         // A valid placeholder from the existing DB or an external fast placeholder service
         const placeholderUrl = "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=1000&auto=format&fit=crop";
+
+        logApiUsage(userId || 'system', 'generate-media', 0, 0, 'imagen-3', prompt, placeholderUrl).catch(console.error);
 
         return NextResponse.json({ success: true, url: placeholderUrl, fromCache: false, isPlaceholder: true });
 

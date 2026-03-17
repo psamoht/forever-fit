@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { encodeWAV } from "@/lib/audio-utils";
+import { logApiUsage } from "@/lib/admin-logger";
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { exerciseName, exerciseDescription, isNext, userName, isFirst, isLast, sets, reps, duration, mode, muscleGroup, isVariant, baseExerciseName } = body;
+        const { exerciseName, exerciseDescription, isNext, userName, isFirst, isLast, sets, reps, duration, mode, muscleGroup, isVariant, baseExerciseName, userId } = body;
 
         // 1. Generate text script
         const textModel = genAI.getGenerativeModel({
@@ -65,6 +66,9 @@ Verwende keine Emojis, Sterne (*) oder Markdown in deiner Antwort. Lies nicht st
             contents: [{ role: 'user', parts: [{ text: prompt }] }]
         });
 
+        const textInputTokens = textResponse.response.usageMetadata?.promptTokenCount || 0;
+        const textOutputTokens = textResponse.response.usageMetadata?.candidatesTokenCount || 0;
+
         let text = textResponse.response.text().replace(/[*#_]/g, "").trim();
 
         // 2. Synthesize audio
@@ -100,6 +104,17 @@ Verwende keine Emojis, Sterne (*) oder Markdown in deiner Antwort. Lies nicht st
                     base64Audio = wavBuf.toString("base64");
                 }
             }
+        }
+
+        const audioInputTokens = audioResponse.response.usageMetadata?.promptTokenCount || 0;
+        const audioOutputTokens = audioResponse.response.usageMetadata?.candidatesTokenCount || 0;
+
+        // Fire and forget logging
+        if (userId) {
+            Promise.all([
+                logApiUsage(userId, 'coach-script-text', textInputTokens, textOutputTokens, 'gemini-2.0-flash', prompt, text),
+                logApiUsage(userId, 'coach-script-audio', audioInputTokens, audioOutputTokens, 'gemini-1.5-flash', text, 'AUDIO_RESPONSE')
+            ]).catch(console.error);
         }
 
         return NextResponse.json({ success: true, text, audio: base64Audio });
