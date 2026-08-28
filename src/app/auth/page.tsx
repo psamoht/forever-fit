@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import { Lock, Mail, Loader2, ArrowRight } from "lucide-react";
+import { Lock, Mail, Loader2, CheckCircle2, ArrowRight } from "lucide-react";
 
 export default function AuthPage() {
     const [isLogin, setIsLogin] = useState(true);
@@ -14,6 +14,7 @@ export default function AuthPage() {
     const [password, setPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [confirmationSent, setConfirmationSent] = useState(false);
     const router = useRouter();
 
     const handleAuth = async (e: React.FormEvent) => {
@@ -28,16 +29,28 @@ export default function AuthPage() {
                     password,
                 });
                 if (error) throw error;
-                router.push("/dashboard"); // Or check onboarding status
+                router.push("/dashboard");
             } else {
-                const { error } = await supabase.auth.signUp({
+                const redirectUrl = typeof window !== "undefined"
+                    ? `${window.location.origin}/auth/callback`
+                    : undefined;
+
+                const { data, error } = await supabase.auth.signUp({
                     email,
                     password,
+                    options: {
+                        emailRedirectTo: redirectUrl,
+                    },
                 });
                 if (error) throw error;
-                // Check if user already exists or needs profile
-                // For now, redirect to onboarding to set name
-                router.push("/onboarding");
+
+                // If user is auto-confirmed or session exists immediately
+                if (data?.session) {
+                    router.push("/onboarding");
+                } else {
+                    // Confirmation email has been sent
+                    setConfirmationSent(true);
+                }
             }
         } catch (err: any) {
             console.error("Auth error:", err);
@@ -46,6 +59,38 @@ export default function AuthPage() {
             setIsLoading(false);
         }
     };
+
+    if (confirmationSent) {
+        return (
+            <div className="flex flex-col gap-6 pt-10 px-4 animate-in fade-in duration-700">
+                <Card className="p-8 bg-white/70 backdrop-blur-xl border border-white/50 shadow-2xl shadow-emerald-900/5 text-center space-y-6">
+                    <div className="mx-auto w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center">
+                        <CheckCircle2 className="w-9 h-9" />
+                    </div>
+                    <div className="space-y-2">
+                        <h1 className="text-2xl font-bold text-slate-800">Bestätigungs-E-Mail gesendet!</h1>
+                        <p className="text-slate-600 text-sm leading-relaxed">
+                            Wir haben einen Bestätigungslink an <strong className="text-slate-800">{email}</strong> gesendet.
+                        </p>
+                        <p className="text-slate-500 text-xs">
+                            Bitte öffne die E-Mail und klicke auf den Link, um dein Konto zu aktivieren und mit dem Onboarding zu starten.
+                        </p>
+                    </div>
+
+                    <Button
+                        variant="outline"
+                        onClick={() => {
+                            setConfirmationSent(false);
+                            setIsLogin(true);
+                        }}
+                        className="w-full"
+                    >
+                        Zurück zum Login
+                    </Button>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6 pt-10 px-4 animate-in fade-in duration-700">
