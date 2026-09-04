@@ -29,29 +29,36 @@ export async function logApiUsage(
     feature: string,
     inputTokens: number,
     outputTokens: number,
-    modelName: string = 'gemini-2.5-flash',
+    modelName: string = 'gemini-3.8-flash',
     prompt: string | null = null,
     response: string | null = null,
     promptKey: string | null = null,
     category: ApiCategory = API_CATEGORIES.OTHER
 ) {
-    let costPerInputTokenUSD = 0.15 / 1_000_000;
-    let costPerOutputTokenUSD = 0.60 / 1_000_000;
+    let costPerInputTokenUSD = 0.75 / 1_000_000;
+    let costPerOutputTokenUSD = 3.75 / 1_000_000;
     let flatCostUSD = 0;
 
     const lowerModel = modelName.toLowerCase();
 
     if (lowerModel.includes('imagen') || lowerModel.includes('image')) {
-        flatCostUSD = 0.03; // Flat $0.03 per image
+        flatCostUSD = 0.020; // Imagen 3 Fast flat $0.020 per image
         costPerInputTokenUSD = 0;
         costPerOutputTokenUSD = 0;
+    } else if (lowerModel.includes('tts') || lowerModel.includes('audio')) {
+        // Gemini 3.1 Flash TTS / Gemini TTS audio tokens
+        costPerInputTokenUSD = 1.00 / 1_000_000;
+        costPerOutputTokenUSD = 20.00 / 1_000_000;
     } else if (lowerModel.includes('pro')) {
-        costPerInputTokenUSD = 1.25 / 1_000_000;
-        costPerOutputTokenUSD = 5.00 / 1_000_000;
+        costPerInputTokenUSD = 2.00 / 1_000_000;
+        costPerOutputTokenUSD = 12.00 / 1_000_000;
+    } else if (lowerModel.includes('3.8') || lowerModel.includes('3.7') || lowerModel.includes('3.6')) {
+        costPerInputTokenUSD = 0.75 / 1_000_000;
+        costPerOutputTokenUSD = 3.75 / 1_000_000;
     } else {
-        // Default to gemini-2.5-flash pricing
-        costPerInputTokenUSD = 0.15 / 1_000_000;
-        costPerOutputTokenUSD = 0.60 / 1_000_000;
+        // Default / Gemini 3.8 Flash pricing
+        costPerInputTokenUSD = 0.75 / 1_000_000;
+        costPerOutputTokenUSD = 3.75 / 1_000_000;
     }
 
     const estimatedCostUSD = flatCostUSD + (inputTokens * costPerInputTokenUSD) + (outputTokens * costPerOutputTokenUSD);

@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
         const { userName, stats, userId } = body;
 
         const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash",
+            model: "gemini-3.8-flash",
             systemInstruction: `Du bist "Coach Theo", ein erfahrener, durch und durch positiver und extrem motivierender Fitness-Coach für Senioren. Du bist kein Roboter, sondern sprichst wie ein echter Mensch aus Fleisch und Blut.
 Dein Ziel ist es, dem Nutzer auf seinem Dashboard eine tagesaktuelle, extrem kompetente Einschätzung zu geben.
 Sprich den Nutzer immer per "Du" und mit seinem Namen an. Zeige deine Expertise als Trainer, aber auf eine warme, zugängliche und unterstützende Art.
@@ -50,7 +50,7 @@ Aktuelle Status-Daten: ${JSON.stringify(stats || {})}`;
             'workout-analysis',
             inputTokens,
             outputTokens,
-            'gemini-2.5-flash',
+            'gemini-3.8-flash',
             prompt,
             text,
             'daily-analysis',

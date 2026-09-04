@@ -177,7 +177,7 @@ WICHTIGSTE REGEL ZUM FORMAT:
         const userId = profile?.id || null;
 
         Promise.all([
-            logApiUsage(userId, 'generate-workout', inputTokens, outputTokens, 'gemini-2.5-flash', systemPrompt, text, 'workout-generation', API_CATEGORIES.WORKOUT_GENERATION),
+            logApiUsage(userId, 'generate-workout', inputTokens, outputTokens, 'gemini-3.8-flash', systemPrompt, text, 'workout-generation', API_CATEGORIES.WORKOUT_GENERATION),
             logUserActivity(userId, 'workout_generated', `Generated plan for theme: ${theme}`, { theme })
         ]).catch(e => console.error("Admin Logging Error:", e));
 

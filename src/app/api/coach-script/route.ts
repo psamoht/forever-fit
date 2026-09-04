@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
 
         // 1. Generate text script
         const textModel = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash",
+            model: "gemini-3.8-flash",
             systemInstruction: `Du bist "Coach Theo", ein motivierender und herzlicher Fitness-Coach. Deine Stimme ist männlich, beruhigend, aber bestimmt.
 Der Nutzer soll nicht auf den Bildschirm schauen müssen. Erkläre die wichtigste Bewegung ("Stell dich schulterbreit hin und beuge...").
 Spreche den Nutzer IMMER persönlich mit seinem Namen an, wenn du ihn begrüßt. Verwende NIEMALS generische Phrasen wie "Meine Lieben", "Team" oder "Leute".
@@ -75,11 +75,20 @@ Verwende keine Emojis, Sterne (*) oder Markdown in deiner Antwort. Lies nicht st
         let base64Audio = null;
         let audioInputTokens = 0;
         let audioOutputTokens = 0;
+        let usedAudioModel = "gemini-3.1-flash-tts";
 
         try {
-            const audioModel = genAI.getGenerativeModel({
-                model: "gemini-2.5-flash-preview-tts"
-            });
+            let audioModel;
+            try {
+                audioModel = genAI.getGenerativeModel({
+                    model: "gemini-3.1-flash-tts"
+                });
+            } catch {
+                usedAudioModel = "gemini-2.5-flash-preview-tts";
+                audioModel = genAI.getGenerativeModel({
+                    model: "gemini-2.5-flash-preview-tts"
+                });
+            }
 
             const audioResponse = await audioModel.generateContent({
                 contents: [{ role: 'user', parts: [{ text }] }],
@@ -112,14 +121,48 @@ Verwende keine Emojis, Sterne (*) oder Markdown in deiner Antwort. Lies nicht st
             audioInputTokens = audioResponse.response.usageMetadata?.promptTokenCount || 0;
             audioOutputTokens = audioResponse.response.usageMetadata?.candidatesTokenCount || 0;
         } catch (audioErr) {
-            console.warn("Audio TTS synthesis skipped/failed, proceeding with text script only:", audioErr);
+            console.warn("Audio TTS synthesis with 3.1-flash-tts failed, trying fallback to 2.5-flash-preview-tts:", audioErr);
+            try {
+                usedAudioModel = "gemini-2.5-flash-preview-tts";
+                const fallbackAudioModel = genAI.getGenerativeModel({
+                    model: "gemini-2.5-flash-preview-tts"
+                });
+                const audioResponse = await fallbackAudioModel.generateContent({
+                    contents: [{ role: 'user', parts: [{ text }] }],
+                    generationConfig: {
+                        // @ts-ignore
+                        responseModalities: ["AUDIO"],
+                        speechConfig: {
+                            voiceConfig: {
+                                prebuiltVoiceConfig: {
+                                    voiceName: "Puck"
+                                }
+                            }
+                        }
+                    }
+                });
+                const parts = audioResponse.response.candidates?.[0]?.content?.parts;
+                if (parts && parts.length > 0) {
+                    for (const part of parts) {
+                        if (part.inlineData && part.inlineData.mimeType.startsWith('audio')) {
+                            const pcmBuffer = Buffer.from(part.inlineData.data, "base64");
+                            const wavBuf = encodeWAV(new Uint8Array(pcmBuffer), 24000);
+                            base64Audio = wavBuf.toString("base64");
+                        }
+                    }
+                }
+                audioInputTokens = audioResponse.response.usageMetadata?.promptTokenCount || 0;
+                audioOutputTokens = audioResponse.response.usageMetadata?.candidatesTokenCount || 0;
+            } catch (fallbackErr) {
+                console.warn("TTS fallback also failed:", fallbackErr);
+            }
         }
 
         // Fire and forget logging
         if (userId) {
             Promise.all([
-                logApiUsage(userId, 'coach-script-text', textInputTokens, textOutputTokens, 'gemini-2.5-flash', prompt, text, 'coach-script', API_CATEGORIES.COACH_SCRIPT),
-                ...(base64Audio ? [logApiUsage(userId, 'coach-script-audio', audioInputTokens, audioOutputTokens, 'gemini-2.5-flash-preview-tts', text, 'AUDIO_RESPONSE', 'coach-audio-tts', API_CATEGORIES.COACH_AUDIO)] : [])
+                logApiUsage(userId, 'coach-script-text', textInputTokens, textOutputTokens, 'gemini-3.8-flash', prompt, text, 'coach-script', API_CATEGORIES.COACH_SCRIPT),
+                ...(base64Audio ? [logApiUsage(userId, 'coach-script-audio', audioInputTokens, audioOutputTokens, usedAudioModel, text, 'AUDIO_RESPONSE', 'coach-audio-tts', API_CATEGORIES.COACH_AUDIO)] : [])
             ]).catch(console.error);
         }
 

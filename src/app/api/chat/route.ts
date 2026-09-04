@@ -75,7 +75,7 @@ ${p.currentSchedule.map((s: any) => `  ${s.day_of_week}: ${s.activity_title || s
             if (cacheObj) {
                 usedCache = true;
                 const cachedModel = genAI.getGenerativeModel({
-                    model: "gemini-2.5-flash",
+                    model: "gemini-3.8-flash",
                     cachedContent: cacheObj as any
                 });
 
@@ -106,7 +106,7 @@ ${p.currentSchedule.map((s: any) => `  ${s.day_of_week}: ${s.activity_title || s
         }
 
         Promise.all([
-            logApiUsage(userId, usedCache ? 'chat (cached)' : 'chat', inputTokens, outputTokens, 'gemini-2.5-flash', fullSystemPrompt + "\n\nUser: " + message, responseText, 'coach-theo-chat', API_CATEGORIES.COACH_CHAT),
+            logApiUsage(userId, usedCache ? 'chat (cached)' : 'chat', inputTokens, outputTokens, 'gemini-3.8-flash', fullSystemPrompt + "\n\nUser: " + message, responseText, 'coach-theo-chat', API_CATEGORIES.COACH_CHAT),
             logUserActivity(userId, 'chat_interaction', 'Interacted with Coach Theo in Chat', { messageLength: message?.length || 0, tokens: totalTokens, cached: usedCache })
         ]).catch(e => console.error("Admin Logging Error:", e));
 

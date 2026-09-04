@@ -62,7 +62,7 @@ Antworte NUR mit einem JSON-Array, kein anderer Text:
 
         const inputTokens = result.response.usageMetadata?.promptTokenCount || 0;
         const outputTokens = result.response.usageMetadata?.candidatesTokenCount || 0;
-        logApiUsage(userId, "generate-schedule", inputTokens, outputTokens, 'gemini-2.5-flash', prompt, text, 'schedule-generation', API_CATEGORIES.SCHEDULE_GENERATION).catch(console.error);
+        logApiUsage(userId, "generate-schedule", inputTokens, outputTokens, 'gemini-3.8-flash', prompt, text, 'schedule-generation', API_CATEGORIES.SCHEDULE_GENERATION).catch(console.error);
 
         // Parse JSON from response
         const jsonMatch = text.match(/\[[\s\S]*\]/);

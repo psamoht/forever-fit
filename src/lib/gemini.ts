@@ -202,6 +202,6 @@ ALLGEMEINE REGELN:
 
 
 export const model = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash",
+  model: "gemini-3.8-flash",
   systemInstruction: COACH_SYSTEM_PROMPT
 });
