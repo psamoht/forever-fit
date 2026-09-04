@@ -30,9 +30,6 @@ export default function WorkoutPlayerPage() {
     const [currentSet, setCurrentSet] = useState(1); // Track current set (1-indexed)
     const [loading, setLoading] = useState(true);
     const [isSpeaking, setIsSpeaking] = useState(false);
-    const [summaryText, setSummaryText] = useState<string | null>(null);
-    const [summaryLoading, setSummaryLoading] = useState(false);
-    const [summaryAudioBase64, setSummaryAudioBase64] = useState<string | null>(null);
     const [generatingImage, setGeneratingImage] = useState(false);
     const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
     const [isAudioEnabled, setIsAudioEnabled] = useState(true);
@@ -40,16 +37,18 @@ export default function WorkoutPlayerPage() {
     const [levelUpInfo, setLevelUpInfo] = useState<LevelInfo | null>(null);
     const [countdown, setCountdown] = useState(8); // For auto-redirect after completion
 
-    // --- Audio Pre-buffering States ---
+    // --- Audio Pre-buffering States & Refs ---
     const [prefetchedAudio, setPrefetchedAudio] = useState<Record<number, string>>({});
     const [prefetchedImages, setPrefetchedImages] = useState<Record<number, string>>({});
-    const [prefetchedSummary, setPrefetchedSummary] = useState<{ audio: string, text: string } | null>(null);
 
     const { profile: globalProfile, userName, refreshProfile } = useProfile();
 
     const currentExercise = workoutQueue[currentIndex];
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const currentExerciseIndexRef = useRef<number>(0);
+    const prefetchedAudioRef = useRef<Record<number, string>>({});
+    const isSpeakingRef = useRef<boolean>(false);
     const hasFetched = useRef(false);
     const workoutThemeRef = useRef<string>('mobility');
     const variantsUsedRef = useRef<Record<number, string>>({});
@@ -176,10 +175,12 @@ export default function WorkoutPlayerPage() {
                 setTimeLeft(finalExercises[0].duration || 60);
             }
 
-            // Trigger pre-fetch for the first exercise immediately if audio is enabled
+            // Trigger immediate pre-fetch for exercise 0 and 1 so audio starts immediately without delay
             if (isAudioEnabled && finalExercises.length > 0 && userName && userName !== "Du") {
-                // Background fetch, don't await
                 fetchAudioForIndex(0, finalExercises);
+                if (finalExercises.length > 1) {
+                    fetchAudioForIndex(1, finalExercises);
+                }
             }
 
             // Pre-fetch image for the first exercise
@@ -208,34 +209,40 @@ export default function WorkoutPlayerPage() {
         return () => clearInterval(timer);
     }, [isFinished, countdown, router]);
 
-    // Timer Logic - Updates when index changes
+    // Timer & Exercise Transition Logic - Updates when index changes
     useEffect(() => {
         if (!currentExercise) return;
+
+        // Keep currentExerciseIndexRef strictly in sync with currentIndex
+        currentExerciseIndexRef.current = currentIndex;
+
+        // Immediately stop any audio from previous exercise to prevent lag/overlap
+        stopAudio();
 
         setCurrentImageUrl(currentExercise.videoUrl || prefetchedImages[currentIndex] || null);
 
         if (currentExercise.mode === 'timer') {
             setTimeLeft(currentExercise.duration || 60);
-            setIsActive(false); // Valid modification: don't auto-start
+            setIsActive(false);
         }
 
         // Reset set counter when changing exercises
         setCurrentSet(1);
 
-        // Auto-play audio if enabled
+        // Play audio immediately for this exercise
         if (isAudioEnabled && !isFinished && !loading && userName) {
-            fetchAndPlayCoachScript();
+            fetchAndPlayCoachScript(currentIndex);
 
-            // Pre-fetch next exercise while current is reading/playing
-            if (currentIndex < workoutQueue.length - 1) {
+            // Pre-fetch subsequent exercises in background
+            if (currentIndex + 1 < workoutQueue.length) {
                 fetchAudioForIndex(currentIndex + 1, workoutQueue);
-            } else if (currentIndex === workoutQueue.length - 1) {
-                // Pre-fetch summary during the last exercise
-                fetchWorkoutSummaryAudio(workoutQueue);
+            }
+            if (currentIndex + 2 < workoutQueue.length) {
+                fetchAudioForIndex(currentIndex + 2, workoutQueue);
             }
         }
 
-        // Pre-fetch next image independently of audio being enabled
+        // Pre-fetch next image
         if (currentIndex < workoutQueue.length - 1) {
             fetchImageForIndex(currentIndex + 1, workoutQueue);
         }
@@ -266,17 +273,33 @@ export default function WorkoutPlayerPage() {
             audioRef.current.src = "";
             audioRef.current = null;
         }
-        window.speechSynthesis.cancel();
+        if (typeof window !== "undefined" && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+        isSpeakingRef.current = false;
         setIsSpeaking(false);
     };
 
-    const playBase64Audio = (base64String: string) => {
+    const playBase64Audio = (base64String: string, targetIndex?: number) => {
+        // Strict guard: if this audio was generated for an index we already navigated away from, discard it!
+        if (targetIndex !== undefined && targetIndex !== currentExerciseIndexRef.current) {
+            console.log(`Discarding playback for index ${targetIndex} (currently at ${currentExerciseIndexRef.current})`);
+            return;
+        }
+
         stopAudio();
+        isSpeakingRef.current = true;
         setIsSpeaking(true);
         const audio = new Audio("data:audio/wav;base64," + base64String);
         audioRef.current = audio;
-        audio.onended = () => setIsSpeaking(false);
-        audio.onerror = () => setIsSpeaking(false);
+        audio.onended = () => {
+            isSpeakingRef.current = false;
+            setIsSpeaking(false);
+        };
+        audio.onerror = () => {
+            isSpeakingRef.current = false;
+            setIsSpeaking(false);
+        };
 
         audio.play().catch(e => {
             if (e.name === 'NotAllowedError') {
@@ -284,13 +307,14 @@ export default function WorkoutPlayerPage() {
             } else {
                 console.warn("Audio playback error:", e);
             }
+            isSpeakingRef.current = false;
             setIsSpeaking(false);
         });
     };
 
     const fetchAudioForIndex = async (index: number, exercises: Exercise[]) => {
         const exercise = exercises[index];
-        if (!exercise || prefetchedAudio[index]) return; // Already fetched or invalid
+        if (!exercise || prefetchedAudioRef.current[index]) return; // Already fetched or invalid
 
         try {
             console.log(`Pre-fetching audio for index ${index}...`);
@@ -314,8 +338,14 @@ export default function WorkoutPlayerPage() {
 
             const data = await res.json();
             if (data.success && data.audio) {
+                prefetchedAudioRef.current[index] = data.audio;
                 setPrefetchedAudio(prev => ({ ...prev, [index]: data.audio }));
                 console.log(`Successfully pre-fetched audio for index ${index}.`);
+
+                // If the user is currently looking at this exact index and nothing is playing yet, play it!
+                if (currentExerciseIndexRef.current === index && !isSpeakingRef.current && isAudioEnabled) {
+                    playBase64Audio(data.audio, index);
+                }
             }
         } catch (error) {
             console.error(`Error pre-fetching audio for index ${index}:`, error);
@@ -352,82 +382,65 @@ export default function WorkoutPlayerPage() {
         }
     };
 
-    const fetchWorkoutSummaryAudio = async (exercises: Exercise[]) => {
-        if (prefetchedSummary) return; // Already fetched
+    const fetchAndPlayCoachScript = async (targetIndex: number = currentIndex) => {
+        const exercise = workoutQueue[targetIndex];
+        if (!exercise) return;
 
-        try {
-            console.log(`Pre-fetching workout summary...`);
-            const stats = exercises.map(ex => `${ex.name} (${ex.mode === 'reps' ? ex.reps + ' Wdh.' : ex.duration + ' Sek.'})`).join(", ");
-            // We don't have true points yet, but we can estimate base points or just pass 0 for the TTS prompt to ignore.
-            const estimatedPoints = exercises.length * 15;
-
-            const res = await safeFetch("/api/workout-summary", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    userName,
-                    currentWorkoutStats: stats,
-                    previousWorkoutStats: null,
-                    rpeScore: null, // Critical: RPE is pending!
-                    totalPoints: estimatedPoints
-                })
-            });
-
-            const data = await res.json();
-            if (data.success && data.audio && data.text) {
-                setPrefetchedSummary({ audio: data.audio, text: data.text });
-                console.log(`Successfully pre-fetched workout summary.`);
-            }
-        } catch (error) {
-            console.error(`Error pre-fetching summary:`, error);
-        }
-    };
-
-    const fetchAndPlayCoachScript = async () => {
-        if (!currentExercise) return;
-
-        // 1. Play Pre-fetched Audio if available
-        if (prefetchedAudio[currentIndex]) {
-            console.log(`Playing pre-fetched audio for index ${currentIndex}`);
-            playBase64Audio(prefetchedAudio[currentIndex]);
+        // 1. Play Pre-fetched Audio immediately if available
+        if (prefetchedAudioRef.current[targetIndex]) {
+            console.log(`Playing pre-fetched audio for index ${targetIndex}`);
+            playBase64Audio(prefetchedAudioRef.current[targetIndex], targetIndex);
             return;
         }
 
         // 2. Fallback to live fetch
         try {
             setIsSpeaking(true); // Start loading state visually
-            console.log(`Live-fetching audio for index ${currentIndex}...`);
+            console.log(`Live-fetching audio for index ${targetIndex}...`);
             const res = await safeFetch("/api/coach-script", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    exerciseName: currentExercise.name,
-                    exerciseDescription: currentExercise.description,
-                    isNext: currentIndex > 0,
+                    exerciseName: exercise.name,
+                    exerciseDescription: exercise.description,
+                    isNext: targetIndex > 0,
                     userName: userName,
-                    isFirst: currentIndex === 0,
-                    isLast: currentIndex === workoutQueue.length - 1,
-                    sets: currentExercise.sets || 1,
-                    reps: currentExercise.reps || null,
-                    duration: currentExercise.duration || null,
-                    mode: currentExercise.mode || 'reps',
-                    muscleGroup: currentExercise.muscleGroup || null,
-                    isVariant: !!variantsUsedRef.current[currentIndex],
+                    isFirst: targetIndex === 0,
+                    isLast: targetIndex === workoutQueue.length - 1,
+                    sets: exercise.sets || 1,
+                    reps: exercise.reps || null,
+                    duration: exercise.duration || null,
+                    mode: exercise.mode || 'reps',
+                    muscleGroup: exercise.muscleGroup || null,
+                    isVariant: !!variantsUsedRef.current[targetIndex],
                     baseExerciseName: "der Ursprungsübung"
                 })
             });
 
             const data = await res.json();
+
+            // Strict race condition check: if user navigated away while waiting for the response, do NOT play!
+            if (currentExerciseIndexRef.current !== targetIndex) {
+                console.log(`Ignoring audio for index ${targetIndex} (user now at index ${currentExerciseIndexRef.current})`);
+                if (data.success && data.audio) {
+                    prefetchedAudioRef.current[targetIndex] = data.audio;
+                    setPrefetchedAudio(prev => ({ ...prev, [targetIndex]: data.audio }));
+                }
+                return;
+            }
+
             if (data.success && data.audio) {
-                // Save it to cache just in case we repeat it, then play it
-                setPrefetchedAudio(prev => ({ ...prev, [currentIndex]: data.audio }));
-                playBase64Audio(data.audio);
+                prefetchedAudioRef.current[targetIndex] = data.audio;
+                setPrefetchedAudio(prev => ({ ...prev, [targetIndex]: data.audio }));
+                playBase64Audio(data.audio, targetIndex);
             } else {
                 setIsSpeaking(false);
             }
         } catch (error) {
             console.error("Error live-fetching coach script:", error);
-            setIsSpeaking(false);
+            if (currentExerciseIndexRef.current === targetIndex) {
+                setIsSpeaking(false);
+            }
         }
     };
 
@@ -435,7 +448,7 @@ export default function WorkoutPlayerPage() {
         if (isSpeaking) {
             stopAudio();
         } else {
-            fetchAndPlayCoachScript();
+            fetchAndPlayCoachScript(currentIndex);
         }
     };
 
@@ -517,6 +530,14 @@ export default function WorkoutPlayerPage() {
 
     const handleSkip = () => {
         stopAudio();
+        // Invalidate cached audio for the current index since we are swapping the exercise
+        delete prefetchedAudioRef.current[currentIndex];
+        setPrefetchedAudio(prev => {
+            const next = { ...prev };
+            delete next[currentIndex];
+            return next;
+        });
+
         // Find an alternative that isn't already in the queue (simple version: just pick first available)
         const alt = ALTERNATIVE_EXERCISES.find(a => !workoutQueue.some(w => w.id === a.id));
 
@@ -533,6 +554,10 @@ export default function WorkoutPlayerPage() {
                 setIsActive(false);
             }
             toast.success(`Wir machen stattdessen: ${alt.name}`);
+
+            if (isAudioEnabled && userName) {
+                fetchAndPlayCoachScript(currentIndex);
+            }
         } else {
             toast.error("Keine weiteren Alternativen verfügbar.");
         }
@@ -540,6 +565,14 @@ export default function WorkoutPlayerPage() {
 
     const handleDifficultyChange = (variant: Partial<Exercise>, variantType: 'easier' | 'harder') => {
         stopAudio();
+
+        // Invalidate cached audio for this index
+        delete prefetchedAudioRef.current[currentIndex];
+        setPrefetchedAudio(prev => {
+            const next = { ...prev };
+            delete next[currentIndex];
+            return next;
+        });
 
         const newQueue = [...workoutQueue];
         const updatedExercise = { ...currentExercise, ...variant };
@@ -562,6 +595,10 @@ export default function WorkoutPlayerPage() {
         }
 
         toast.info(`Übung angepasst: ${updatedExercise.name}`);
+
+        if (isAudioEnabled && userName) {
+            fetchAndPlayCoachScript(currentIndex);
+        }
     };
 
     const toggleTimer = () => setIsActive(!isActive);
@@ -663,7 +700,6 @@ export default function WorkoutPlayerPage() {
                 refreshProfile();
 
                 // 4. Log Workout
-                // Mapping: We use existing columns since granular points/rpe_score columns are missing in DB
                 const feedbackLabels: Record<number, string> = {
                     2: "Sehr leicht",
                     4: "Leicht",
@@ -708,7 +744,6 @@ export default function WorkoutPlayerPage() {
                     }),
                 }).catch(() => { });
 
-
                 // 4b. Log individual workout exercises
                 if (newWorkoutData && newWorkoutData.id) {
                     console.log(`Saving ${workoutQueue.length} individual exercises...`);
@@ -743,7 +778,7 @@ export default function WorkoutPlayerPage() {
                 const { error: scheduleError } = await supabase
                     .from('weekly_schedules')
                     .update({ is_completed: true })
-                    .eq('user_id', user.id) // Corrected from profile.id
+                    .eq('user_id', user.id)
                     .eq('day_of_week', todayNameDe);
                 if (scheduleError) console.error("Could not update schedule:", scheduleError);
 
@@ -785,19 +820,8 @@ export default function WorkoutPlayerPage() {
                     }, 500);
                 }
 
-                // 5. Fire Confetti
+                // Fire Confetti celebration
                 fireConfetti();
-
-                // 6. Generate Summary with gamification context
-                const currentLevel = getLevelFromPoints(newPointsTotal);
-                const streakMilestone = getStreakMilestone(newStreak);
-                await generateAndPlaySummary(userName, workoutQueue, totalPoints, rpeScore, {
-                    level: currentLevel,
-                    levelUp: levelUp,
-                    streakDays: newStreak,
-                    streakMilestone: streakMilestone,
-                    totalPoints: newPointsTotal
-                });
             }
         } catch (error) {
             console.error("Error saving workout:", error);
@@ -830,81 +854,6 @@ export default function WorkoutPlayerPage() {
             }
         };
         frame();
-    };
-
-    const generateAndPlaySummary = async (
-        userName: string,
-        completedExercises: Exercise[],
-        points: number,
-        rpe: number,
-        gamification?: {
-            level: LevelInfo;
-            levelUp: LevelInfo | null;
-            streakDays: number;
-            streakMilestone: { message: string; emoji: string } | null;
-            totalPoints: number;
-        }
-    ) => {
-        setSummaryLoading(true);
-        try {
-            // 1. Play Pre-fetched Summary if available
-            if (prefetchedSummary) {
-                console.log("Using pre-fetched workout summary");
-                setSummaryText(prefetchedSummary.text);
-                setSummaryAudioBase64(prefetchedSummary.audio);
-                playBase64Audio(prefetchedSummary.audio);
-                setSummaryLoading(false);
-                return;
-            }
-
-            // 2. Fallback to live fetch
-            console.log("Live-fetching workout summary...");
-            // Simplified stats for prompt
-            const stats = completedExercises.map(ex => `${ex.name} (${ex.mode === 'reps' ? ex.reps + ' Wdh.' : ex.duration + ' Sek.'})`).join(", ");
-
-            const res = await safeFetch("/api/workout-summary", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    userName,
-                    currentWorkoutStats: stats,
-                    previousWorkoutStats: null,
-                    rpeScore: rpe,
-                    totalPoints: points,
-                    gamification: gamification ? {
-                        levelTitle: gamification.level.title,
-                        levelNumber: gamification.level.level,
-                        levelUp: gamification.levelUp ? gamification.levelUp.title : null,
-                        streakDays: gamification.streakDays,
-                        streakMilestone: gamification.streakMilestone?.message || null,
-                        totalPoints: gamification.totalPoints
-                    } : null,
-                    profileContext: {
-                        goals: globalProfile?.goals,
-                        medicalConditions: globalProfile?.medical_conditions
-                    }
-                })
-            });
-
-            const data = await res.json();
-            if (data.success) {
-                setSummaryText(data.text);
-                if (data.audio) {
-                    setSummaryAudioBase64(data.audio);
-                    playBase64Audio(data.audio);
-                }
-            }
-        } catch (error) {
-            console.error("Failed to generate summary:", error);
-        } finally {
-            setSummaryLoading(false);
-        }
-    };
-
-    const playSummaryAudio = () => {
-        if (summaryAudioBase64) {
-            playBase64Audio(summaryAudioBase64);
-        }
     };
 
     if (isFinished) {
@@ -994,37 +943,8 @@ export default function WorkoutPlayerPage() {
                             Zum Hauptmenü
                         </Button>
                     </div>
-
-                    {/* Summary Card */}
-                    <div className="bg-slate-800/80 border border-slate-700 p-6 rounded-2xl max-w-md mx-auto shadow-xl backdrop-blur-sm mt-8">
-                        {summaryLoading ? (
-                            <p className="text-slate-400 animate-pulse">Coach Theo analysiert dein Training...</p>
-                        ) : summaryText ? (
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-2 text-emerald-400 mb-2">
-                                    <Volume2 size={20} />
-                                    <span className="font-bold text-sm uppercase tracking-wider">Coach Theo sagt:</span>
-                                </div>
-                                <p className="text-slate-200 text-sm leading-relaxed italic text-left">
-                                    "{summaryText}"
-                                </p>
-                                <div className="flex justify-center mt-4">
-                                    <Button
-                                        variant="outline"
-                                        size="icon"
-                                        className="rounded-full bg-slate-700 border-slate-600 text-emerald-400 hover:bg-slate-600"
-                                        onClick={playSummaryAudio}
-                                    >
-                                        <Volume2 size={24} />
-                                    </Button>
-                                </div>
-                            </div>
-                        ) : (
-                            <p className="text-slate-300">Du hast das Training erfolgreich beendet. Sei stolz auf dich!</p>
-                        )}
-                    </div>
                 </div>
-            </div >
+            </div>
         );
     }
 
