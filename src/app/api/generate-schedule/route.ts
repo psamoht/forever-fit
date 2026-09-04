@@ -1,7 +1,7 @@
 import { model } from "@/lib/gemini";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { logApiUsage } from "@/lib/admin-logger";
+import { logApiUsage, API_CATEGORIES } from "@/lib/admin-logger";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -62,7 +62,7 @@ Antworte NUR mit einem JSON-Array, kein anderer Text:
 
         const inputTokens = result.response.usageMetadata?.promptTokenCount || 0;
         const outputTokens = result.response.usageMetadata?.candidatesTokenCount || 0;
-        logApiUsage(userId, "generate-schedule", inputTokens, outputTokens, 'gemini-2.0-flash', prompt, text).catch(console.error);
+        logApiUsage(userId, "generate-schedule", inputTokens, outputTokens, 'gemini-2.5-flash', prompt, text, 'schedule-generation', API_CATEGORIES.SCHEDULE_GENERATION).catch(console.error);
 
         // Parse JSON from response
         const jsonMatch = text.match(/\[[\s\S]*\]/);

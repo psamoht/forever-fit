@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { logApiUsage, API_CATEGORIES } from "@/lib/admin-logger";
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { userName, stats } = body;
+        const { userName, stats, userId } = body;
 
         const model = genAI.getGenerativeModel({
             model: "gemini-2.5-flash",
@@ -23,7 +24,7 @@ Dein Ziel ist es, dem Nutzer auf seinem Dashboard eine tagesaktuelle, extrem kom
 Sprich den Nutzer immer per "Du" und mit seinem Namen an. Zeige deine Expertise als Trainer, aber auf eine warme, zugängliche und unterstützende Art.
 REGELN FÜR DEIN COACHING:
 1. Kontext & Expertise: Erkläre dem Nutzer gelegentlich sanft das "Warum" hinter seinem Training. Gib ihm das Gefühl, dass du einen Plan für ihn hast.
-2. Subtilität bei Beschwerden: Du KENNNST die gesundheitlichen Einschränkungen und Ziele des Nutzers, aber du zählst sie NICHT mechanisch auf. Sprich sie nur an, wenn es für das heutige Lob oder die Regeneration WIRKLICH Sinn macht (z.B. "Ich weiß, dass die Knie manchmal zwicken, deshalb bin ich stolz, dass du heute die Mobilisierung gemacht hast").
+2. Subtilität bei Beschwerden: Du KENNST die gesundheitlichen Einschränkungen und Ziele des Nutzers, aber du zählst sie NICHT mechanisch auf. Sprich sie nur an, wenn es für das heutige Lob oder die Regeneration WIRKLICH Sinn macht (z.B. "Ich weiß, dass die Knie manchmal zwicken, deshalb bin ich stolz, dass du heute die Mobilisierung gemacht hast").
 3. Belastung & Regeneration: Achte auf den RPE-Score (Anstrengung). Wenn jemand hart trainiert hat (RPE hoch), lobe den Einsatz, aber erkläre als Experte, warum jetzt Regeneration wichtig ist. Bei leichten Einheiten bestätige, dass auch sanfte Bewegung extrem wertvoll für Gelenke und Stoffwechsel ist.
 4. Ausfälle normalisieren: Wenn der Nutzer länger nicht trainiert hat, sei niemals enttäuscht. Der Fokus liegt immer auf dem "Heute fangen wir einfach wieder an".
 5. Vermeide Listen: Zähle nicht einfach Punkte, Streaks und Übungen auf. Interpretiere sie! ("Wow, 7 Tage am Stück – das macht aus Training eine echte Gewohnheit!")
@@ -33,14 +34,29 @@ Verwende keine Sternchen (*) oder auffälliges Markdown in deiner Antwort.`,
         });
 
         let prompt = `Bitte schreibe deine heutige Trainer-Einschätzung für deinen Athleten ${userName || 'hier'}.
-Hintergrundwissen (NUR im Hinterkopf behalten, NICHT unbedingt alles erwähnen): Ziele: ${stats.goals || 'Fitness erhalten'}. Beschwerden: ${stats.medicalConditions || 'Keine'}.
-Aktuelle Status-Daten: ${JSON.stringify(stats)}`;
+Hintergrundwissen (NUR im Hinterkopf behalten, NICHT unbedingt alles erwähnen): Ziele: ${stats?.goals || 'Fitness erhalten'}. Beschwerden: ${stats?.medicalConditions || 'Keine'}.
+Aktuelle Status-Daten: ${JSON.stringify(stats || {})}`;
 
         const response = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
         });
 
+        const inputTokens = response.response.usageMetadata?.promptTokenCount || 0;
+        const outputTokens = response.response.usageMetadata?.candidatesTokenCount || 0;
         const text = response.response.text().replace(/[*#_]/g, "").trim();
+
+        logApiUsage(
+            userId || null,
+            'workout-analysis',
+            inputTokens,
+            outputTokens,
+            'gemini-2.5-flash',
+            prompt,
+            text,
+            'daily-analysis',
+            API_CATEGORIES.WORKOUT_ANALYSIS
+        ).catch(console.error);
+
         return NextResponse.json({ success: true, text });
 
     } catch (error) {

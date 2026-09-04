@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
+import { logApiUsage, API_CATEGORIES } from "@/lib/admin-logger";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -10,7 +11,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const { exerciseId, exerciseName, description } = await req.json();
+        const { exerciseId, exerciseName, description, userId } = await req.json();
 
         if (!exerciseId || !exerciseName) {
             return NextResponse.json({ error: "Missing exerciseId or exerciseName" }, { status: 400 });
@@ -61,6 +62,19 @@ export async function POST(req: NextRequest) {
 
         // Write the base64 string directly as a binary file
         await fs.writeFile(filePath, Buffer.from(base64Image, 'base64'));
+
+        // Log API cost for image generation
+        logApiUsage(
+            userId || null,
+            `generate-image: ${exerciseName}`,
+            0,
+            0,
+            'imagen-3',
+            prompt,
+            `/exercises/${fileName}`,
+            'activity-image',
+            API_CATEGORIES.ACTIVITY_IMAGE_GENERATION
+        ).catch(console.error);
 
         return NextResponse.json({ success: true, url: `/exercises/${fileName}` });
 

@@ -1,6 +1,6 @@
 import { model } from "@/lib/gemini";
 import { NextResponse } from "next/server";
-import { logApiUsage, logUserActivity, isBudgetExceeded } from "@/lib/admin-logger";
+import { logApiUsage, logUserActivity, isBudgetExceeded, API_CATEGORIES } from "@/lib/admin-logger";
 import { Exercise } from "@/lib/workout-data";
 import { createClient } from "@supabase/supabase-js";
 
@@ -177,7 +177,7 @@ WICHTIGSTE REGEL ZUM FORMAT:
         const userId = profile?.id || null;
 
         Promise.all([
-            logApiUsage(userId, 'generate-workout', inputTokens, outputTokens, 'gemini-2.0-flash', systemPrompt, text, 'workout-generation'),
+            logApiUsage(userId, 'generate-workout', inputTokens, outputTokens, 'gemini-2.5-flash', systemPrompt, text, 'workout-generation', API_CATEGORIES.WORKOUT_GENERATION),
             logUserActivity(userId, 'workout_generated', `Generated plan for theme: ${theme}`, { theme })
         ]).catch(e => console.error("Admin Logging Error:", e));
 

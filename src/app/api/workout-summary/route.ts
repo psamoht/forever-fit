@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { encodeWAV } from "@/lib/audio-utils";
-import { logApiUsage } from "@/lib/admin-logger";
+import { logApiUsage, API_CATEGORIES } from "@/lib/admin-logger";
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
@@ -86,46 +86,52 @@ Verwende keine Sternchen (*) oder auffälliges Markdown in deiner Antwort.`,
         let text = textResponse.response.text().replace(/[*#_]/g, "").trim();
 
         // 2. Generate Audio from the text
-        const audioModel = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash"
-        });
+        let base64Audio = null;
+        let audioInputTokens = 0;
+        let audioOutputTokens = 0;
 
-        const audioResponse = await audioModel.generateContent({
-            contents: [{ role: 'user', parts: [{ text }] }],
-            generationConfig: {
-                // @ts-ignore
-                responseModalities: ["AUDIO"],
-                speechConfig: {
-                    voiceConfig: {
-                        prebuiltVoiceConfig: {
-                            voiceName: "Puck" // Male voice
+        try {
+            const audioModel = genAI.getGenerativeModel({
+                model: "gemini-2.5-flash-preview-tts"
+            });
+
+            const audioResponse = await audioModel.generateContent({
+                contents: [{ role: 'user', parts: [{ text }] }],
+                generationConfig: {
+                    // @ts-ignore
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: {
+                            prebuiltVoiceConfig: {
+                                voiceName: "Puck" // Male voice
+                            }
                         }
                     }
                 }
-            }
-        });
+            });
 
-        const audioData = audioResponse.response;
-        let base64Audio = null;
-
-        const parts = audioData.candidates?.[0]?.content?.parts;
-        if (parts && parts.length > 0) {
-            for (const part of parts) {
-                if (part.inlineData && part.inlineData.mimeType.startsWith('audio')) {
-                    const pcmBuffer = Buffer.from(part.inlineData.data, "base64");
-                    const wavBuf = encodeWAV(new Uint8Array(pcmBuffer), 24000);
-                    base64Audio = wavBuf.toString("base64");
+            const audioData = audioResponse.response;
+            const parts = audioData.candidates?.[0]?.content?.parts;
+            if (parts && parts.length > 0) {
+                for (const part of parts) {
+                    if (part.inlineData && part.inlineData.mimeType.startsWith('audio')) {
+                        const pcmBuffer = Buffer.from(part.inlineData.data, "base64");
+                        const wavBuf = encodeWAV(new Uint8Array(pcmBuffer), 24000);
+                        base64Audio = wavBuf.toString("base64");
+                    }
                 }
             }
-        }
 
-        const audioInputTokens = audioResponse.response.usageMetadata?.promptTokenCount || 0;
-        const audioOutputTokens = audioResponse.response.usageMetadata?.candidatesTokenCount || 0;
+            audioInputTokens = audioResponse.response.usageMetadata?.promptTokenCount || 0;
+            audioOutputTokens = audioResponse.response.usageMetadata?.candidatesTokenCount || 0;
+        } catch (audioErr) {
+            console.warn("Audio TTS synthesis skipped/failed in workout-summary, proceeding with text script only:", audioErr);
+        }
 
         if (finalUserId) {
             Promise.all([
-                logApiUsage(finalUserId, 'workout-summary-text', textInputTokens, textOutputTokens, 'gemini-2.5-flash', prompt, text),
-                logApiUsage(finalUserId, 'workout-summary-audio', audioInputTokens, audioOutputTokens, 'gemini-1.5-flash', text, 'AUDIO_RESPONSE')
+                logApiUsage(finalUserId, 'workout-summary-text', textInputTokens, textOutputTokens, 'gemini-2.5-flash', prompt, text, 'workout-summary', API_CATEGORIES.WORKOUT_SUMMARY),
+                ...(base64Audio ? [logApiUsage(finalUserId, 'workout-summary-audio', audioInputTokens, audioOutputTokens, 'gemini-2.5-flash-preview-tts', text, 'AUDIO_RESPONSE', 'workout-summary-audio', API_CATEGORIES.COACH_AUDIO)] : [])
             ]).catch(console.error);
         }
 

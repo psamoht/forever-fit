@@ -47,7 +47,7 @@ export async function getOrCreateContextCache(
         }));
 
         const newCache = await cacheManager.create({
-            model: "models/gemini-2.0-flash",
+            model: "models/gemini-2.5-flash",
             displayName,
             systemInstruction: {
                 role: "system",

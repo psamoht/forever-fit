@@ -1,56 +1,68 @@
 import { supabase } from "./supabaseClient";
 
+export const API_CATEGORIES = {
+    WORKOUT_GENERATION: "Workout Generation",
+    ACTIVITY_IMAGE_GENERATION: "Activity Image Generation",
+    SCHEDULE_GENERATION: "Schedule & Activity Generation",
+    COACH_CHAT: "Coach Theo Chat",
+    COACH_SCRIPT: "Coach Script",
+    COACH_AUDIO: "Coach Audio / TTS",
+    WORKOUT_SUMMARY: "Workout Summary",
+    WORKOUT_ANALYSIS: "Workout Analysis",
+    OTHER: "Other"
+} as const;
+
+export type ApiCategory = typeof API_CATEGORIES[keyof typeof API_CATEGORIES];
+
 /**
  * Logs Gemini API usage and estimates exact cost.
- * Prices per 1M tokens based on standard March 2026 pricing:
- * Gemini 2.0 Flash: $0.10 Input, $0.40 Output
- * Gemini 1.5 Flash: $0.075 Input, $0.30 Output
- * Gemini 1.5 Pro: $1.25 Input, $5.00 Output
- * Imagen 3: $0.03 per image
+ * Prices per 1M tokens (Standard 2026 pricing):
+ * - Gemini 2.5 Flash: $0.15 Input, $0.60 Output
+ * - Gemini 2.5 Flash TTS: $0.15 Input, $0.60 Output
+ * - Imagen 3 / Flash Image: $0.03 flat per image
+ * - Gemini 2.5 Pro: $1.25 Input, $5.00 Output
  * 
- * Conversion Rate 1 USD = 0.92 EUR
+ * Conversion Rate: 1 USD = 0.92 EUR
  */
 export async function logApiUsage(
     userId: string | null,
     feature: string,
     inputTokens: number,
     outputTokens: number,
-    modelName: string = 'gemini-2.0-flash',
+    modelName: string = 'gemini-2.5-flash',
     prompt: string | null = null,
     response: string | null = null,
-    promptKey: string | null = null
+    promptKey: string | null = null,
+    category: ApiCategory = API_CATEGORIES.OTHER
 ) {
-    if (!userId) return;
-
-    let costPerInputTokenUSD = 0.10 / 1_000_000;
-    let costPerOutputTokenUSD = 0.40 / 1_000_000;
+    let costPerInputTokenUSD = 0.15 / 1_000_000;
+    let costPerOutputTokenUSD = 0.60 / 1_000_000;
     let flatCostUSD = 0;
 
     const lowerModel = modelName.toLowerCase();
 
-    if (lowerModel.includes('1.5-flash')) {
-        costPerInputTokenUSD = 0.075 / 1_000_000;
-        costPerOutputTokenUSD = 0.30 / 1_000_000;
-    } else if (lowerModel.includes('imagen')) {
-        flatCostUSD = 0.03; // Flat $0.03 per generated image
+    if (lowerModel.includes('imagen') || lowerModel.includes('image')) {
+        flatCostUSD = 0.03; // Flat $0.03 per image
         costPerInputTokenUSD = 0;
         costPerOutputTokenUSD = 0;
     } else if (lowerModel.includes('pro')) {
         costPerInputTokenUSD = 1.25 / 1_000_000;
         costPerOutputTokenUSD = 5.00 / 1_000_000;
     } else {
-        // Default to 2.0 flash pricing
-        costPerInputTokenUSD = 0.10 / 1_000_000;
-        costPerOutputTokenUSD = 0.40 / 1_000_000;
+        // Default to gemini-2.5-flash pricing
+        costPerInputTokenUSD = 0.15 / 1_000_000;
+        costPerOutputTokenUSD = 0.60 / 1_000_000;
     }
 
     const estimatedCostUSD = flatCostUSD + (inputTokens * costPerInputTokenUSD) + (outputTokens * costPerOutputTokenUSD);
-    const estimatedCostEUR = estimatedCostUSD * 0.92; // 1 USD = 0.92 EUR
+    const estimatedCostEUR = estimatedCostUSD * 0.92;
 
     try {
         await supabase.from('api_usage_logs').insert({
-            user_id: userId,
+            user_id: userId || null,
+            category: category,
             feature: promptKey ? `${feature} (${promptKey})` : `${feature} (${modelName})`,
+            model_name: modelName,
             input_tokens: inputTokens,
             output_tokens: outputTokens,
             total_tokens: inputTokens + outputTokens,
@@ -66,9 +78,7 @@ export async function logApiUsage(
 }
 
 /**
- * Logs a high-level user activity abstractly.
- * @param actionType e.g., 'app_open', 'workout_start', 'chat'
- * @param description e.g., 'Started Workout: Upper Body'
+ * Logs a high-level user activity.
  */
 export async function logUserActivity(userId: string, actionType: string, description: string, metadata: any = null) {
     if (!userId) return;
@@ -81,12 +91,12 @@ export async function logUserActivity(userId: string, actionType: string, descri
             metadata: metadata || {}
         });
     } catch (e) {
-        console.error("Failed to user activity logging:", e);
+        console.error("Failed to log user activity:", e);
     }
 }
+
 /**
- * Checks if the monthly budget for API costs has been exceeded.
- * @param monthlyLimit Default 50.00 EUR
+ * Checks if monthly budget has been exceeded.
  */
 export async function isBudgetExceeded(monthlyLimit: number = 50.00): Promise<boolean> {
     const now = new Date();
@@ -110,6 +120,6 @@ export async function isBudgetExceeded(monthlyLimit: number = 50.00): Promise<bo
         return false;
     } catch (e) {
         console.error("Failed to check budget:", e);
-        return false; // Fail safe - allow API calls if check fails, but log it
+        return false;
     }
 }
